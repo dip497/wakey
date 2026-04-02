@@ -9,6 +9,10 @@ description = "Wakey binary — ties all systems together"
 name = "wakey"
 path = "src/main.rs"
 
+[features]
+default = ["voice"]
+voice = ["wakey-cortex/voice"]
+
 [dependencies]
 wakey-types = { workspace = true }
 wakey-spine = { workspace = true }

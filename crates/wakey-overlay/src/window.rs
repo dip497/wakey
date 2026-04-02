@@ -274,7 +274,9 @@ fn handle_spine_event(
             if overlay_state.voice_state == VoiceState::Listening {
                 overlay_state.voice_state = VoiceState::Idle;
                 let mood = overlay_state.mood;
-                overlay_state.sprite.set_expression(Expression::from_mood(mood));
+                overlay_state
+                    .sprite
+                    .set_expression(Expression::from_mood(mood));
             }
         }
 
@@ -317,14 +319,20 @@ fn handle_spine_event(
             tracing::debug!("Voice session ended");
             overlay_state.voice_state = VoiceState::Idle;
             let mood = overlay_state.mood;
-            overlay_state.sprite.set_expression(Expression::from_mood(mood));
+            overlay_state
+                .sprite
+                .set_expression(Expression::from_mood(mood));
         }
 
         WakeyEvent::VoiceError { message } => {
             tracing::error!(message, "Voice error");
             overlay_state.voice_state = VoiceState::Idle;
-            overlay_state.sprite.set_expression(Expression::from_mood(Mood::Concerned));
-            overlay_state.bubble.show(&format!("Voice error: {}", message), now);
+            overlay_state
+                .sprite
+                .set_expression(Expression::from_mood(Mood::Concerned));
+            overlay_state
+                .bubble
+                .show(&format!("Voice error: {}", message), now);
         }
 
         WakeyEvent::Shutdown => {

@@ -63,39 +63,39 @@ pub struct PersonaConfig {
 pub struct VoiceConfig {
     /// Enable voice mode
     pub enabled: bool,
-    /// DashScope API key environment variable name
-    pub dashscope_api_key_env: String,
-    /// ASR model (qwen3-asr-flash-realtime)
-    pub asr_model: String,
-    /// TTS model (qwen3-tts-flash-realtime)
+    /// Voice provider: "deepgram" (future: "elevenlabs", "openai")
+    pub provider: String,
+    /// API key environment variable name
+    pub api_key_env: String,
+    /// STT model (deepgram: "nova-3")
+    pub stt_model: String,
+    /// TTS model (deepgram: "aura-2-theia-en")
     pub tts_model: String,
-    /// TTS voice name
-    pub voice: String,
     /// Audio sample rate for ASR (16000 Hz)
     pub asr_sample_rate: u32,
     /// Audio sample rate for TTS (24000 Hz)
     pub tts_sample_rate: u32,
-    /// Push-to-talk key (e.g., "space", "ctrl+space")
-    pub push_to_talk_key: String,
-    /// Use server-side VAD for speech detection
-    pub use_server_vad: bool,
     /// Language for ASR (e.g., "en", "zh")
     pub language: String,
+    /// Push-to-talk key (e.g., "space", "ctrl+space")
+    pub push_to_talk_key: String,
+    /// Endpointing timeout in ms (speech end detection)
+    pub endpointing_ms: u32,
 }
 
 impl Default for VoiceConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            dashscope_api_key_env: "DASHSCOPE_API_KEY".to_string(),
-            asr_model: "qwen3-asr-flash-realtime".to_string(),
-            tts_model: "qwen3-tts-flash-realtime".to_string(),
-            voice: "Cherry".to_string(),
+            provider: "deepgram".to_string(),
+            api_key_env: "DEEPGRAM_API_KEY".to_string(),
+            stt_model: "nova-3".to_string(),
+            tts_model: "aura-2-theia-en".to_string(),
             asr_sample_rate: 16000,
             tts_sample_rate: 24000,
-            push_to_talk_key: "space".to_string(),
-            use_server_vad: true,
             language: "en".to_string(),
+            push_to_talk_key: "space".to_string(),
+            endpointing_ms: 300,
         }
     }
 }
@@ -312,15 +312,15 @@ proactive = false
 
 [voice]
 enabled = true
-dashscope_api_key_env = "DASHSCOPE_API_KEY"
-asr_model = "qwen3-asr-flash-realtime"
-tts_model = "qwen3-tts-flash-realtime"
-voice = "Cherry"
+provider = "deepgram"
+api_key_env = "DEEPGRAM_API_KEY"
+stt_model = "nova-3"
+tts_model = "aura-2-theia-en"
 asr_sample_rate = 16000
 tts_sample_rate = 24000
-push_to_talk_key = "space"
-use_server_vad = true
 language = "en"
+push_to_talk_key = "space"
+endpointing_ms = 300
 
 [llm]
 default_provider = "test"
@@ -342,7 +342,7 @@ providers = []
         assert_eq!(config.action.enabled, false);
         assert_eq!(config.persona.name, "TestBot");
         assert_eq!(config.voice.enabled, true);
-        assert_eq!(config.voice.voice, "Cherry");
+        assert_eq!(config.voice.provider, "deepgram");
         assert_eq!(config.llm.default_provider, "test");
 
         // Verify path expansion - paths should not contain ~
@@ -390,10 +390,10 @@ providers = []
             assert_eq!(config.heartbeat.tick_interval_ms, 2000);
             assert_eq!(config.persona.name, "Buddy");
             assert_eq!(config.llm.default_provider, "qwen");
-            
+
             // Verify voice config
             assert_eq!(config.voice.enabled, true);
-            assert_eq!(config.voice.voice, "Cherry");
+            assert_eq!(config.voice.provider, "deepgram");
             assert_eq!(config.voice.language, "en");
 
             // Verify paths are expanded (no ~ prefix)

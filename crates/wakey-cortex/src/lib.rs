@@ -17,4 +17,4 @@ pub mod voice;
 pub use llm::{LlmProvider, OpenAiCompatible};
 
 #[cfg(feature = "voice")]
-pub use voice::{VoiceError, VoiceSession, PushToTalkHandler};
+pub use voice::{PushToTalkHandler, VoiceError, VoiceSession};

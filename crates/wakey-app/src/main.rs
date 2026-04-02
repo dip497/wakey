@@ -6,14 +6,16 @@
 //! - LLM provider (S3)
 //! - Overlay with sprite and chat bubble (S4)
 //! - Decision loop that calls LLM periodically (S5)
+//! - Voice mode with push-to-talk (S6)
 
 use anyhow::Result;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use wakey_cortex::heartbeat::HeartbeatRunner;
 use wakey_cortex::llm::{LlmProvider, OpenAiCompatible};
+use wakey_cortex::voice::VoiceSession;
 use wakey_overlay::run_overlay_with_spine;
 use wakey_spine::Spine;
 use wakey_types::config::WakeyConfig;
@@ -84,6 +86,59 @@ fn main() -> Result<()> {
             tokio::time::sleep(Duration::from_millis(500)).await;
         });
     });
+
+    // Start voice session in its own thread (cpal Stream is !Send, can't use tokio::spawn)
+    // Voice runs independently and uses server-side VAD for speech detection.
+    // Push-to-talk (Space key) will be added when global keyboard hook is implemented.
+    if config.voice.enabled {
+        let voice_spine = spine.clone();
+        let voice_config = config.voice.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Voice runtime failed");
+
+            rt.block_on(async move {
+                info!("Voice session started (push-to-talk: Space, VAD: enabled)");
+
+                // Run voice sessions in a loop
+                loop {
+                    match VoiceSession::new(voice_config.clone(), voice_spine.clone()) {
+                        Ok(mut session) => {
+                            // Run one STT→LLM→TTS cycle
+                            if let Err(e) = session.start().await {
+                                // Check if it's a shutdown or disabled error
+                                match e {
+                                    wakey_cortex::voice::VoiceError::Disabled => {
+                                        info!("Voice disabled in config");
+                                        break;
+                                    }
+                                    other => {
+                                        warn!(error = %other, "Voice session ended, restarting...");
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Failed to create voice session");
+                            // Don't restart if API key is missing
+                            if matches!(e, wakey_cortex::voice::VoiceError::MissingApiKey(_)) {
+                                break;
+                            }
+                        }
+                    }
+
+                    // Small pause between sessions
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+
+                info!("Voice session stopped");
+            });
+        });
+    } else {
+        info!("Voice mode disabled in config");
+    }
 
     info!("Starting overlay window...");
 
@@ -278,6 +333,32 @@ impl EventLogger {
                         WakeyEvent::Shutdown => {
                             info!("Shutdown event received, stopping logger");
                             break;
+                        }
+                        // Voice events
+                        WakeyEvent::VoiceListeningStarted => {
+                            info!("Voice: Listening started (mic active)");
+                        }
+                        WakeyEvent::VoiceListeningStopped => {
+                            info!("Voice: Listening stopped");
+                        }
+                        WakeyEvent::VoiceUserSpeaking { text, is_final } => {
+                            if *is_final {
+                                info!(text = %text, "Voice: User said (final)");
+                            } else {
+                                debug!(text = %text, "Voice: User speaking (intermediate)");
+                            }
+                        }
+                        WakeyEvent::VoiceWakeyThinking => {
+                            info!("Voice: Wakey thinking...");
+                        }
+                        WakeyEvent::VoiceWakeySpeaking { text } => {
+                            info!(text = %text, "Voice: Wakey speaking");
+                        }
+                        WakeyEvent::VoiceSessionEnded => {
+                            info!("Voice: Session ended");
+                        }
+                        WakeyEvent::VoiceError { message } => {
+                            warn!(message = %message, "Voice: Error");
                         }
                         other => {
                             debug!(event = ?other, "Event received");
