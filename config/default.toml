@@ -33,6 +33,18 @@ name = "Buddy"                # User names their own companion
 style = "casual"              # casual, formal, playful, minimal
 proactive = true              # Should Wakey initiate conversations?
 
+[voice]
+enabled = true                # Enable voice mode
+dashscope_api_key_env = "DASHSCOPE_API_KEY"
+asr_model = "qwen3-asr-flash-realtime"
+tts_model = "qwen3-tts-flash-realtime"
+voice = "Cherry"              # TTS voice: Cherry, Ethan, etc.
+asr_sample_rate = 16000       # 16kHz for ASR
+tts_sample_rate = 24000       # 24kHz for TTS
+push_to_talk_key = "space"    # Key to hold for voice input
+use_server_vad = true         # Use server-side voice activity detection
+language = "en"               # ASR language: en, zh, etc.
+
 [llm]
 default_provider = "qwen"
 

@@ -11,6 +11,7 @@ pub struct WakeyConfig {
     pub memory: MemoryConfig,
     pub action: ActionConfig,
     pub persona: PersonaConfig,
+    pub voice: VoiceConfig,
     pub llm: LlmConfig,
 }
 
@@ -56,6 +57,47 @@ pub struct PersonaConfig {
     pub name: String,
     pub style: String,
     pub proactive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceConfig {
+    /// Enable voice mode
+    pub enabled: bool,
+    /// DashScope API key environment variable name
+    pub dashscope_api_key_env: String,
+    /// ASR model (qwen3-asr-flash-realtime)
+    pub asr_model: String,
+    /// TTS model (qwen3-tts-flash-realtime)
+    pub tts_model: String,
+    /// TTS voice name
+    pub voice: String,
+    /// Audio sample rate for ASR (16000 Hz)
+    pub asr_sample_rate: u32,
+    /// Audio sample rate for TTS (24000 Hz)
+    pub tts_sample_rate: u32,
+    /// Push-to-talk key (e.g., "space", "ctrl+space")
+    pub push_to_talk_key: String,
+    /// Use server-side VAD for speech detection
+    pub use_server_vad: bool,
+    /// Language for ASR (e.g., "en", "zh")
+    pub language: String,
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dashscope_api_key_env: "DASHSCOPE_API_KEY".to_string(),
+            asr_model: "qwen3-asr-flash-realtime".to_string(),
+            tts_model: "qwen3-tts-flash-realtime".to_string(),
+            voice: "Cherry".to_string(),
+            asr_sample_rate: 16000,
+            tts_sample_rate: 24000,
+            push_to_talk_key: "space".to_string(),
+            use_server_vad: true,
+            language: "en".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +149,7 @@ impl Default for WakeyConfig {
                 style: "casual".to_string(),
                 proactive: true,
             },
+            voice: VoiceConfig::default(),
             llm: LlmConfig {
                 default_provider: "anthropic".to_string(),
                 providers: vec![],
@@ -163,6 +206,7 @@ impl WakeyConfig {
                 policy_dir: expand_tilde(&self.action.policy_dir),
             },
             persona: self.persona,
+            voice: self.voice,
             llm: self.llm,
         }
     }
@@ -266,6 +310,18 @@ name = "TestBot"
 style = "formal"
 proactive = false
 
+[voice]
+enabled = true
+dashscope_api_key_env = "DASHSCOPE_API_KEY"
+asr_model = "qwen3-asr-flash-realtime"
+tts_model = "qwen3-tts-flash-realtime"
+voice = "Cherry"
+asr_sample_rate = 16000
+tts_sample_rate = 24000
+push_to_talk_key = "space"
+use_server_vad = true
+language = "en"
+
 [llm]
 default_provider = "test"
 providers = []
@@ -285,6 +341,8 @@ providers = []
         assert_eq!(config.memory.max_working_memory_tokens, 8192);
         assert_eq!(config.action.enabled, false);
         assert_eq!(config.persona.name, "TestBot");
+        assert_eq!(config.voice.enabled, true);
+        assert_eq!(config.voice.voice, "Cherry");
         assert_eq!(config.llm.default_provider, "test");
 
         // Verify path expansion - paths should not contain ~
@@ -331,7 +389,12 @@ providers = []
             assert_eq!(config.general.log_level, "info");
             assert_eq!(config.heartbeat.tick_interval_ms, 2000);
             assert_eq!(config.persona.name, "Buddy");
-            assert_eq!(config.llm.default_provider, "ollama");
+            assert_eq!(config.llm.default_provider, "qwen");
+            
+            // Verify voice config
+            assert_eq!(config.voice.enabled, true);
+            assert_eq!(config.voice.voice, "Cherry");
+            assert_eq!(config.voice.language, "en");
 
             // Verify paths are expanded (no ~ prefix)
             assert!(!config.general.data_dir.starts_with("~"));

@@ -31,7 +31,7 @@ pub mod window;
 pub use bubble::Bubble;
 pub use expressions::Expression;
 pub use sprite::Sprite;
-pub use window::{OverlayApp, OverlayConfig, OverlayState, run_overlay, run_spine_handler};
+pub use window::{OverlayApp, OverlayConfig, OverlayState, VoiceState, run_overlay, run_spine_handler};
 
 use std::sync::{Arc, Mutex, atomic::AtomicBool};
 use wakey_spine::Spine;

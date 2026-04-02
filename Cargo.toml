@@ -54,6 +54,15 @@ async-trait = "0.1"
 # Env file loading
 dotenvy = "0.15"
 
+# Audio I/O (cross-platform)
+cpal = "0.15"
+
+# WebSocket client
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+
+# Base64 encoding
+base64 = "0.22"
+
 # Internal crates
 wakey-types = { path = "crates/wakey-types" }
 wakey-spine = { path = "crates/wakey-spine" }

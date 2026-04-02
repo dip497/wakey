@@ -44,6 +44,22 @@ pub struct OverlayState {
     pub shutdown_requested: bool,
     /// Last update time
     pub last_update: Instant,
+    /// Voice mode state
+    pub voice_state: VoiceState,
+}
+
+/// Voice mode state for the overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VoiceState {
+    /// Not in voice mode
+    #[default]
+    Idle,
+    /// Listening for user speech
+    Listening,
+    /// Processing/thinking
+    Thinking,
+    /// Wakey is speaking
+    Speaking,
 }
 
 impl Default for OverlayState {
@@ -54,6 +70,7 @@ impl Default for OverlayState {
             mood: Mood::Neutral,
             shutdown_requested: false,
             last_update: Instant::now(),
+            voice_state: VoiceState::default(),
         }
     }
 }
@@ -235,6 +252,79 @@ fn handle_spine_event(
             overlay_state
                 .sprite
                 .set_expression(Expression::from_mood(to));
+        }
+
+        // ── Voice events ──
+        WakeyEvent::VoiceListeningStarted => {
+            tracing::debug!("Voice listening started");
+            overlay_state.voice_state = VoiceState::Listening;
+            // Set focused/attentive expression
+            overlay_state.sprite.set_expression(Expression {
+                glow_color: [0.30, 0.60, 0.90, 0.85], // Bright blue - attentive
+                anim_speed: 1.2,
+                eye_openness: 1.0,
+                sleepy: false,
+                bounce: false,
+            });
+            overlay_state.bubble.show("Listening...", now);
+        }
+
+        WakeyEvent::VoiceListeningStopped => {
+            tracing::debug!("Voice listening stopped");
+            if overlay_state.voice_state == VoiceState::Listening {
+                overlay_state.voice_state = VoiceState::Idle;
+                let mood = overlay_state.mood;
+                overlay_state.sprite.set_expression(Expression::from_mood(mood));
+            }
+        }
+
+        WakeyEvent::VoiceUserSpeaking { text, is_final } => {
+            tracing::debug!(text = %text, is_final, "User speaking");
+            if is_final {
+                overlay_state.bubble.show(&text, now);
+            }
+        }
+
+        WakeyEvent::VoiceWakeyThinking => {
+            tracing::debug!("Wakey thinking");
+            overlay_state.voice_state = VoiceState::Thinking;
+            // Set thinking expression
+            overlay_state.sprite.set_expression(Expression {
+                glow_color: [0.70, 0.50, 0.90, 0.80], // Purple - thinking
+                anim_speed: 0.6,
+                eye_openness: 0.9,
+                sleepy: false,
+                bounce: false,
+            });
+            overlay_state.bubble.show("...", now);
+        }
+
+        WakeyEvent::VoiceWakeySpeaking { text } => {
+            tracing::debug!(text = %text, "Wakey speaking");
+            overlay_state.voice_state = VoiceState::Speaking;
+            // Set happy/talking expression
+            overlay_state.sprite.set_expression(Expression {
+                glow_color: [0.95, 0.75, 0.35, 0.90], // Bright amber - talking
+                anim_speed: 1.4,
+                eye_openness: 1.0,
+                sleepy: false,
+                bounce: true,
+            });
+            overlay_state.bubble.show(&text, now);
+        }
+
+        WakeyEvent::VoiceSessionEnded => {
+            tracing::debug!("Voice session ended");
+            overlay_state.voice_state = VoiceState::Idle;
+            let mood = overlay_state.mood;
+            overlay_state.sprite.set_expression(Expression::from_mood(mood));
+        }
+
+        WakeyEvent::VoiceError { message } => {
+            tracing::error!(message, "Voice error");
+            overlay_state.voice_state = VoiceState::Idle;
+            overlay_state.sprite.set_expression(Expression::from_mood(Mood::Concerned));
+            overlay_state.bubble.show(&format!("Voice error: {}", message), now);
         }
 
         WakeyEvent::Shutdown => {

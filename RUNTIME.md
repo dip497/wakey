@@ -35,6 +35,27 @@ cargo build --release
 - xdotool for input injection (Linux)
 - AT-SPI2 for accessibility APIs (usually pre-installed on GNOME/KDE)
 
+## Voice Mode Dependencies (Optional)
+Voice mode enables real-time speech conversation with Wakey.
+
+To enable voice mode:
+1. Install ALSA development libraries:
+   ```bash
+   sudo apt-get install libasound2-dev pkg-config
+   ```
+2. Build with the `voice` feature:
+   ```bash
+   cargo build --features voice
+   ```
+3. Set the DASHSCOPE_API_KEY environment variable:
+   ```bash
+   export DASHSCOPE_API_KEY="sk-xxx"
+   ```
+
+Voice mode uses Qwen DashScope APIs:
+- ASR: qwen3-asr-flash-realtime (16kHz PCM input)
+- TTS: qwen3-tts-flash-realtime (24kHz PCM output)
+
 ## Reference Repos (for research)
 - ZeroClaw: /home/dipendra-sharma/projects/zeroclaw/
 - OpenFang: /home/dipendra-sharma/projects/openfang/

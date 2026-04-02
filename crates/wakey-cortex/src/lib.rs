@@ -10,5 +10,11 @@ pub mod decision;
 pub mod heartbeat;
 pub mod llm;
 
+#[cfg(feature = "voice")]
+pub mod voice;
+
 // Re-export main types for convenience
 pub use llm::{LlmProvider, OpenAiCompatible};
+
+#[cfg(feature = "voice")]
+pub use voice::{VoiceError, VoiceSession, PushToTalkHandler};

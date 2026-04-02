@@ -158,6 +158,22 @@ pub enum WakeyEvent {
         source: String,
         message: String,
     },
+
+    // ── VOICE (real-time speech) ──
+    VoiceListeningStarted,
+    VoiceListeningStopped,
+    VoiceUserSpeaking {
+        text: String,
+        is_final: bool,
+    },
+    VoiceWakeyThinking,
+    VoiceWakeySpeaking {
+        text: String,
+    },
+    VoiceSessionEnded,
+    VoiceError {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
