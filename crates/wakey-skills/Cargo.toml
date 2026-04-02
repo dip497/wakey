@@ -3,12 +3,15 @@ name = "wakey-skills"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Extensible skill system — trait-based + WASM sandboxed"
+description = "Skills runtime — Hermes format + petgraph DAG + WASM sandbox + learning loop"
 
 [dependencies]
 wakey-types = { workspace = true }
 wakey-spine = { workspace = true }
-wakey-safety = { workspace = true }
+wakey-context = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+petgraph = { workspace = true }
+async-trait = { workspace = true }

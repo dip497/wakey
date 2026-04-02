@@ -1,9 +1,9 @@
 [package]
-name = "wakey-action"
+name = "wakey-context"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Hands + Safety — input, terminal, browser + Cedar policy engine"
+description = "Memory + skills storage — OpenViking filesystem pattern with L0/L1/L2 tiers"
 
 [dependencies]
 wakey-types = { workspace = true }
@@ -11,4 +11,7 @@ wakey-spine = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { workspace = true }
 async-trait = { workspace = true }
+chrono = { workspace = true }

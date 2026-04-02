@@ -3,11 +3,10 @@ name = "wakey-overlay"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Visual presence — always-on-top window, sprites, chat bubbles"
+description = "The face — always-on-top egui window, sprites, chat bubbles, expressions"
 
 [dependencies]
 wakey-types = { workspace = true }
 wakey-spine = { workspace = true }
-wakey-persona = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

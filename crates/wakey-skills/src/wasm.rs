@@ -1,1 +1,1 @@
-// TODO: implement skill wasm
+// TODO: OpenFang wasmtime sandbox — fuel metering, capability security
