@@ -1,0 +1,13 @@
+[package]
+name = "wakey-overlay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Visual presence — always-on-top window, sprites, chat bubbles"
+
+[dependencies]
+wakey-types = { workspace = true }
+wakey-spine = { workspace = true }
+wakey-persona = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

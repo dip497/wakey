@@ -1,0 +1,47 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Wakey runtime data
+viking/data/
+skills/learned/
+*.db
+*.db-journal
+
+# Secrets
+.env
+*.pem
+*.key
+.bg-shell/
+
+# ── GSD baseline (auto-generated) ──
+.gsd
+*~
+*.code-workspace
+.env.*
+!.env.example
+node_modules/
+.next/
+dist/
+build/
+__pycache__/
+*.pyc
+.venv/
+venv/
+target/
+vendor/
+*.log
+coverage/
+.cache/
+tmp/

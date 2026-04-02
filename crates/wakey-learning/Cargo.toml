@@ -1,0 +1,15 @@
+[package]
+name = "wakey-learning"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Self-improving skill loop — extract, refine, and evolve skills from experience"
+
+[dependencies]
+wakey-types = { workspace = true }
+wakey-spine = { workspace = true }
+wakey-memory = { workspace = true }
+wakey-skills = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }

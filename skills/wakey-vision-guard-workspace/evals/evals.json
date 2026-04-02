@@ -1,0 +1,23 @@
+{
+  "skill_name": "wakey-vision-guard",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "brainstorm 5 new features for wakey. i want it to feel really alive when i'm coding late at night",
+      "expected_output": "Should generate 5 companion-like features with mini-proposals, all passing the alive test, focused on late-night coding scenarios",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "i think wakey should track how much time i spend on each app and show me a weekly report with charts and graphs. also it should integrate with toggl and clockify for time tracking",
+      "expected_output": "Should catch this as tool-creep/manager behavior, fail the Friend Gate, and redirect toward a more companion-like approach to time awareness",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "we should add a microservice architecture for wakey with a separate API gateway, message queue, and database service so it can scale to handle multiple users on a network",
+      "expected_output": "Should catch this as massive over-engineering and scope explosion, redirect to single-binary Rust philosophy, remind that Wakey runs on ONE laptop for ONE person",
+      "files": []
+    }
+  ]
+}

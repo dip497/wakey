@@ -1,0 +1,14 @@
+[package]
+name = "wakey-memory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tiered memory system — OpenViking pattern with L0/L1/L2 context loading"
+
+[dependencies]
+wakey-types = { workspace = true }
+wakey-spine = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

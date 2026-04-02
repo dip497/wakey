@@ -1,0 +1,56 @@
+# Wakey Configuration
+# Your laptop, alive.
+
+[general]
+data_dir = "~/.wakey"
+log_level = "info"
+
+[heartbeat]
+tick_interval_ms = 2000       # 2 seconds — system vitals, active window
+breath_interval_ms = 30000    # 30 seconds — screen understanding
+reflect_interval_ms = 900000  # 15 minutes — activity summary
+dream_hour = 4                # 4 AM — daily memory compression
+
+[vision]
+a11y_enabled = true           # Layer 0: OS accessibility APIs (always-on)
+ocr_enabled = true            # Layer 1: local OCR on screen change
+vlm_enabled = true            # Layer 2: cloud vision LLM (periodic)
+vlm_interval_secs = 60        # How often to send screenshots to VLM
+capture_resolution = [1024, 768]
+
+[memory]
+backend = "viking"
+viking_root = "~/.wakey/viking"
+max_working_memory_tokens = 4096
+
+[action]
+enabled = true
+require_confirmation = true   # Ask before acting (safe default)
+policy_dir = "~/.wakey/policies"
+
+[persona]
+name = "Buddy"                # User names their own companion
+style = "casual"              # casual, formal, playful, minimal
+proactive = true              # Should Wakey initiate conversations?
+
+[llm]
+default_provider = "ollama"
+
+# OpenAI-compatible providers only — works with Ollama, OpenRouter, vLLM, etc.
+[[llm.providers]]
+name = "ollama"
+api_base = "http://localhost:11434/v1"
+model = "llama3.2"
+api_key_env = ""
+
+[[llm.providers]]
+name = "openrouter"
+api_base = "https://openrouter.ai/api/v1"
+model = "anthropic/claude-sonnet-4-6"
+api_key_env = "OPENROUTER_API_KEY"
+
+[[llm.providers]]
+name = "glm"
+api_base = "https://open.bigmodel.cn/api/paas/v4"
+model = "glm-5"
+api_key_env = "GLM_API_KEY"

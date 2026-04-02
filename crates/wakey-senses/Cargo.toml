@@ -1,0 +1,12 @@
+[package]
+name = "wakey-senses"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Perception layer — vision, accessibility, clipboard, filesystem, system vitals"
+
+[dependencies]
+wakey-types = { workspace = true }
+wakey-spine = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

@@ -1,0 +1,30 @@
+[package]
+name = "wakey-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Wakey binary — ties all systems together"
+
+[[bin]]
+name = "wakey"
+path = "src/main.rs"
+
+[dependencies]
+wakey-types = { workspace = true }
+wakey-spine = { workspace = true }
+wakey-senses = { workspace = true }
+wakey-cortex = { workspace = true }
+wakey-memory = { workspace = true }
+wakey-heartbeat = { workspace = true }
+wakey-user-model = { workspace = true }
+wakey-learning = { workspace = true }
+wakey-action = { workspace = true }
+wakey-safety = { workspace = true }
+wakey-persona = { workspace = true }
+wakey-voice = { workspace = true }
+wakey-overlay = { workspace = true }
+wakey-skills = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }

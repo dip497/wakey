@@ -1,0 +1,15 @@
+[package]
+name = "wakey-persona"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Personality system — mood, communication style, and evolution"
+
+[dependencies]
+wakey-types = { workspace = true }
+wakey-spine = { workspace = true }
+wakey-memory = { workspace = true }
+wakey-user-model = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }

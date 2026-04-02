@@ -1,0 +1,71 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/wakey-types",
+    "crates/wakey-spine",
+    "crates/wakey-senses",
+    "crates/wakey-cortex",
+    "crates/wakey-memory",
+    "crates/wakey-heartbeat",
+    "crates/wakey-user-model",
+    "crates/wakey-learning",
+    "crates/wakey-action",
+    "crates/wakey-safety",
+    "crates/wakey-persona",
+    "crates/wakey-voice",
+    "crates/wakey-overlay",
+    "crates/wakey-skills",
+    "crates/wakey-sdk",
+    "crates/wakey-app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/dipendra-sharma/wakey"
+description = "Your laptop, alive — an open-source AI companion"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Internal crates
+wakey-types = { path = "crates/wakey-types" }
+wakey-spine = { path = "crates/wakey-spine" }
+wakey-senses = { path = "crates/wakey-senses" }
+wakey-cortex = { path = "crates/wakey-cortex" }
+wakey-memory = { path = "crates/wakey-memory" }
+wakey-heartbeat = { path = "crates/wakey-heartbeat" }
+wakey-user-model = { path = "crates/wakey-user-model" }
+wakey-learning = { path = "crates/wakey-learning" }
+wakey-action = { path = "crates/wakey-action" }
+wakey-safety = { path = "crates/wakey-safety" }
+wakey-persona = { path = "crates/wakey-persona" }
+wakey-voice = { path = "crates/wakey-voice" }
+wakey-overlay = { path = "crates/wakey-overlay" }
+wakey-skills = { path = "crates/wakey-skills" }
+wakey-sdk = { path = "crates/wakey-sdk" }
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Link-time optimization
+codegen-units = 1   # Single codegen unit for best optimization
+strip = true        # Strip debug symbols
+panic = "abort"     # Smaller binary, no unwinding

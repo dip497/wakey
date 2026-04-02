@@ -1,0 +1,13 @@
+[package]
+name = "wakey-action"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Action execution — mouse, keyboard, terminal, files, browser control"
+
+[dependencies]
+wakey-types = { workspace = true }
+wakey-spine = { workspace = true }
+wakey-safety = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
