@@ -181,17 +181,29 @@ impl VoiceSession {
                         return;
                     }
 
+                    // Log first callback to confirm mic is working
+                    use std::sync::atomic::AtomicBool;
+                    static LOGGED_FIRST: AtomicBool = AtomicBool::new(false);
+                    if !LOGGED_FIRST.swap(true, Ordering::Relaxed) {
+                        eprintln!("[VOICE] First mic callback: {} samples", data.len());
+                    }
+
                     // Convert i16 samples to bytes (PCM16 little-endian)
                     let bytes: Vec<u8> = data
                         .iter()
                         .flat_map(|sample| sample.to_le_bytes())
                         .collect();
 
-                    // Send in chunks
+                    // Send in chunks (try_send is non-blocking, safe from any thread)
                     for chunk in bytes.chunks(AUDIO_CHUNK_BYTES) {
-                        if audio_tx.blocking_send(chunk.to_vec()).is_err() {
-                            debug!("Audio channel closed");
-                            break;
+                        match audio_tx.try_send(chunk.to_vec()) {
+                            Ok(_) => {}
+                            Err(mpsc::error::TrySendError::Full(_)) => {
+                                // Buffer full, drop audio chunk (acceptable for real-time)
+                            }
+                            Err(mpsc::error::TrySendError::Closed(_)) => {
+                                break;
+                            }
                         }
                     }
                 },
@@ -267,6 +279,7 @@ impl VoiceSession {
             while running_rx.load(Ordering::SeqCst) {
                 match ws_rx.next().await {
                     Some(Ok(WsMessage::Text(text))) => {
+                        debug!("STT raw response: {}", &text.chars().take(200).collect::<String>());
                         if let Ok(response) = serde_json::from_str::<SttResponse>(&text) {
                             // Extract transcript from response structure
                             if let Some(channel) = &response.channel
@@ -326,11 +339,13 @@ impl VoiceSession {
                 match audio_rx.recv().await {
                     Some(audio_data) => {
                         // Send raw PCM16 bytes directly - NO base64, NO JSON wrapper
+                        debug!("Sending {} audio bytes to Deepgram", audio_data.len());
                         if ws_tx
                             .send(WsMessage::Binary(audio_data.into()))
                             .await
                             .is_err()
                         {
+                            error!("Failed to send audio to Deepgram WebSocket");
                             break;
                         }
                     }
