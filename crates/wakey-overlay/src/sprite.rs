@@ -212,5 +212,5 @@ fn rand_simple() -> u32 {
     static COUNTER: AtomicU32 = AtomicU32::new(0);
     let val = COUNTER.fetch_add(1, Ordering::Relaxed);
     // Simple hash-like transformation
-    (val * 1103515245 + 12345) % 6000
+    (val.wrapping_mul(1103515245).wrapping_add(12345)) % 6000
 }

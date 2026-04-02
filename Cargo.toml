@@ -51,6 +51,9 @@ petgraph = "0.7"
 # Async traits
 async-trait = "0.1"
 
+# Env file loading
+dotenvy = "0.15"
+
 # Internal crates
 wakey-types = { path = "crates/wakey-types" }
 wakey-spine = { path = "crates/wakey-spine" }

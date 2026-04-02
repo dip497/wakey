@@ -229,75 +229,43 @@ mod tests {
 
     #[test]
     fn test_calculate_cpu_usage() {
+        // CPU stats are cumulative jiffies, so values always increase over time
+        // prev_idle must be less than current_idle
+
         let prev = CpuStats {
-            user: 100,
+            user: 1000,
             nice: 0,
-            system: 50,
-            idle: 850,
-            iowait: 0,
+            system: 500,
+            idle: 8500,
+            iowait: 100,
             irq: 0,
             softirq: 0,
         };
 
         let current = CpuStats {
-            user: 200,
-            nice: 0,
-            system: 100,
-            idle: 700,
-            iowait: 0,
-            irq: 0,
-            softirq: 0,
-        };
-
-        // Total delta: 1000 -> 1000 = 0 delta? No, wait.
-        // prev_total = 1000, current_total = 1000
-        // Actually: prev_total = 100+50+850 = 1000, current = 200+100+700 = 1000
-        // This test needs fixing
-        let usage = calculate_cpu_usage(prev, current);
-        // prev_idle = 850, current_idle = 700, delta = -150
-        // This is a bad test case. Let's use realistic numbers.
-
-        // Better test:
-        let prev2 = CpuStats {
-            user: 1000,
-            nice: 0,
-            system: 500,
-            idle: 8500,
-            iowait: 0,
-            irq: 0,
-            softirq: 0,
-        };
-
-        let current2 = CpuStats {
             user: 1100,
             nice: 0,
             system: 600,
-            idle: 8300,
-            iowait: 0,
+            idle: 8700,
+            iowait: 120,
             irq: 0,
             softirq: 0,
         };
 
-        // prev_total = 10000, current_total = 10000
-        // prev_idle = 8500, current_idle = 8300
-        // idle_delta = -200... wait that's wrong too.
-        // Actually current_idle < prev_idle means CPU was MORE busy, not less.
+        // prev_idle = 8500 + 100 = 8600
+        // current_idle = 8700 + 120 = 8820
+        // idle_delta = 8820 - 8600 = 220
+        // prev_total = 1000+0+500+8500+100+0+0 = 10100
+        // current_total = 1100+0+600+8700+120+0+0 = 10520
+        // total_delta = 10520 - 10100 = 420
+        // usage = (420 - 220) / 420 * 100 = 200/420 * 100 = 47.6%
 
-        // Let's think again:
-        // prev: idle = 8500, total = 10000
-        // current: idle = 8300, total = 10000
-        // But total should increase over time! Let me use proper numbers.
+        let usage = calculate_cpu_usage(prev, current);
+        assert!((usage - 47.619047).abs() < 0.1);
 
-        // After 1 second with 10% CPU usage:
-        // prev: user=0, nice=0, system=0, idle=100 (total=100, idle=100)
-        // current: user=10, nice=0, system=0, idle=90 (total=100, idle=90)
-        // idle_delta = 90-100 = -10? No wait, values increase monotonically!
-
-        // Correct: values are cumulative jiffies
-        // At time T0: idle=10000, total=10000+work=10000+1000=11000, work=1000
-        // At time T1: idle=10090, total=11000+200=11200, work=1200
-        // idle_delta = 90, total_delta = 200
-        // usage = (200-90)/200 = 110/200 = 55%
+        // Edge case: zero delta
+        let usage_zero = calculate_cpu_usage(prev, prev);
+        assert_eq!(usage_zero, 0.0);
     }
 
     #[test]

@@ -14,15 +14,13 @@
 //! # Usage
 //!
 //! ```rust,no_run
-//! use wakey_overlay::{run_overlay_with_spine, OverlayState};
+//! use wakey_overlay::run_overlay_with_spine;
 //! use wakey_spine::Spine;
-//! use std::sync::{Arc, Mutex};
 //!
 //! let spine = Spine::new();
-//! let state = Arc::new(Mutex::new(OverlayState::default()));
 //!
 //! // This blocks on the GUI thread; run in a dedicated thread if needed
-//! run_overlay_with_spine(spine, state);
+//! run_overlay_with_spine(spine);
 //! ```
 
 pub mod bubble;
