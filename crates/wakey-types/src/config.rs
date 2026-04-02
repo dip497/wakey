@@ -1,5 +1,7 @@
+use crate::{WakeyError, WakeyResult};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tracing::warn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WakeyConfig {
@@ -109,6 +111,230 @@ impl Default for WakeyConfig {
                 default_provider: "anthropic".to_string(),
                 providers: vec![],
             },
+        }
+    }
+}
+
+impl WakeyConfig {
+    /// Load configuration from a TOML file.
+    ///
+    /// Falls back to defaults if the file doesn't exist (logs a warning).
+    /// Expands `~` in all path fields to the user's home directory.
+    pub fn load(path: &Path) -> WakeyResult<Self> {
+        match std::fs::read_to_string(path) {
+            Ok(contents) => {
+                let config: Self = toml::from_str(&contents).map_err(|e| {
+                    WakeyError::Config(format!("Failed to parse {}: {}", path.display(), e))
+                })?;
+                Ok(config.expand_paths())
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                warn!(
+                    "Config file not found at {}, using defaults",
+                    path.display()
+                );
+                Ok(Self::default())
+            }
+            Err(e) => Err(WakeyError::Config(format!(
+                "Failed to read {}: {}",
+                path.display(),
+                e
+            ))),
+        }
+    }
+
+    /// Expand `~` in all PathBuf fields to the user's home directory.
+    fn expand_paths(self) -> Self {
+        Self {
+            general: GeneralConfig {
+                data_dir: expand_tilde(&self.general.data_dir),
+                log_level: self.general.log_level,
+            },
+            heartbeat: self.heartbeat,
+            vision: self.vision,
+            memory: MemoryConfig {
+                backend: self.memory.backend,
+                viking_root: expand_tilde(&self.memory.viking_root),
+                max_working_memory_tokens: self.memory.max_working_memory_tokens,
+            },
+            action: ActionConfig {
+                enabled: self.action.enabled,
+                require_confirmation: self.action.require_confirmation,
+                policy_dir: expand_tilde(&self.action.policy_dir),
+            },
+            persona: self.persona,
+            llm: self.llm,
+        }
+    }
+}
+
+/// Expand `~` at the start of a path to the user's home directory.
+///
+/// Returns the path unchanged if:
+/// - It doesn't start with `~`
+/// - The home directory cannot be determined
+fn expand_tilde(path: &Path) -> PathBuf {
+    if !path.starts_with("~") {
+        return path.to_path_buf();
+    }
+
+    // Get home directory from $HOME env var (Linux)
+    // Fall back to /home if not set
+    let home = std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/home"));
+
+    // Strip the `~` prefix and append to home
+    let stripped = path.strip_prefix("~").unwrap_or(path);
+    home.join(stripped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_expand_tilde_with_tilde() {
+        // Use actual HOME from environment
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home".to_string());
+
+        let path = PathBuf::from("~/.wakey");
+        let expanded = expand_tilde(&path);
+
+        // Should expand to HOME/.wakey
+        assert!(expanded.starts_with(&home));
+        assert!(expanded.ends_with(".wakey"));
+        assert!(!expanded.starts_with("~"));
+    }
+
+    #[test]
+    fn test_expand_tilde_without_tilde() {
+        let path = PathBuf::from("/absolute/path");
+        let expanded = expand_tilde(&path);
+
+        assert_eq!(expanded, path);
+    }
+
+    #[test]
+    fn test_expand_tilde_nested_path() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home".to_string());
+
+        let path = PathBuf::from("~/.wakey/viking/memory");
+        let expanded = expand_tilde(&path);
+
+        assert!(expanded.starts_with(&home));
+        assert!(expanded.ends_with(".wakey/viking/memory"));
+        assert!(!expanded.starts_with("~"));
+    }
+
+    #[test]
+    fn test_load_existing_config() {
+        // Create a temp file with valid config
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let config_content = r#"
+[general]
+data_dir = "~/.wakey"
+log_level = "debug"
+
+[heartbeat]
+tick_interval_ms = 1000
+breath_interval_ms = 5000
+reflect_interval_ms = 60000
+dream_hour = 3
+
+[vision]
+a11y_enabled = false
+ocr_enabled = true
+vlm_enabled = false
+vlm_interval_secs = 30
+capture_resolution = [800, 600]
+
+[memory]
+backend = "sqlite"
+viking_root = "~/.wakey/data"
+max_working_memory_tokens = 8192
+
+[action]
+enabled = false
+require_confirmation = false
+policy_dir = "~/.wakey/rules"
+
+[persona]
+name = "TestBot"
+style = "formal"
+proactive = false
+
+[llm]
+default_provider = "test"
+providers = []
+"#;
+        temp_file
+            .write_all(config_content.as_bytes())
+            .expect("Failed to write config");
+        temp_file.flush().expect("Failed to flush");
+
+        let config = WakeyConfig::load(temp_file.path()).expect("Failed to load config");
+
+        // Verify loaded values
+        assert_eq!(config.general.log_level, "debug");
+        assert_eq!(config.heartbeat.tick_interval_ms, 1000);
+        assert_eq!(config.vision.a11y_enabled, false);
+        assert_eq!(config.memory.backend, "sqlite");
+        assert_eq!(config.memory.max_working_memory_tokens, 8192);
+        assert_eq!(config.action.enabled, false);
+        assert_eq!(config.persona.name, "TestBot");
+        assert_eq!(config.llm.default_provider, "test");
+
+        // Verify path expansion - paths should not contain ~
+        assert!(!config.general.data_dir.starts_with("~"));
+        assert!(!config.memory.viking_root.starts_with("~"));
+        assert!(!config.action.policy_dir.starts_with("~"));
+    }
+
+    #[test]
+    fn test_load_missing_config_returns_defaults() {
+        let missing_path = PathBuf::from("/nonexistent/path/config.toml");
+
+        let config =
+            WakeyConfig::load(&missing_path).expect("Should return defaults for missing file");
+
+        // Verify defaults are used
+        assert_eq!(config.general.log_level, "info");
+        assert_eq!(config.heartbeat.tick_interval_ms, 2000);
+        assert_eq!(config.vision.a11y_enabled, true);
+        assert_eq!(config.persona.name, "Buddy");
+    }
+
+    #[test]
+    fn test_load_invalid_toml_returns_error() {
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        temp_file
+            .write_all(b"invalid [[[toml")
+            .expect("Failed to write invalid config");
+        temp_file.flush().expect("Failed to flush");
+
+        let result = WakeyConfig::load(temp_file.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_actual_default_config() {
+        // Load the actual project default config
+        let config_path = PathBuf::from("config/default.toml");
+
+        if config_path.exists() {
+            let config = WakeyConfig::load(&config_path).expect("Failed to load default config");
+
+            // Verify expected values from default.toml
+            assert_eq!(config.general.log_level, "info");
+            assert_eq!(config.heartbeat.tick_interval_ms, 2000);
+            assert_eq!(config.persona.name, "Buddy");
+            assert_eq!(config.llm.default_provider, "ollama");
+
+            // Verify paths are expanded (no ~ prefix)
+            assert!(!config.general.data_dir.starts_with("~"));
         }
     }
 }

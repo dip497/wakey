@@ -9,3 +9,6 @@ pub mod agent_loop;
 pub mod decision;
 pub mod heartbeat;
 pub mod llm;
+
+// Re-export main types for convenience
+pub use llm::{LlmProvider, OpenAiCompatible};

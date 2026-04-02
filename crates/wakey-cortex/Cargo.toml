@@ -9,6 +9,7 @@ description = "The brain — agent loop (ZeroClaw pattern), LLM client, heartbea
 wakey-types = { workspace = true }
 wakey-spine = { workspace = true }
 wakey-context = { workspace = true }
+wakey-senses = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
