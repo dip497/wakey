@@ -13,21 +13,14 @@ Wakey is a Rust-first, event-driven AI companion that lives on your desktop as a
 ```
 wakey/
 ├── crates/
-│   ├── wakey-types/          # Shared types, events, config, errors
+│   ├── wakey-types/          # Foundation: shared types, events, config, errors
 │   ├── wakey-spine/          # Event bus (tokio broadcast channels)
-│   ├── wakey-senses/         # Vision, a11y, clipboard, fs, git, system vitals
-│   ├── wakey-cortex/         # Decision engine, LLM orchestration
-│   ├── wakey-memory/         # OpenViking integration, tiered L0/L1/L2
-│   ├── wakey-heartbeat/      # Tick/breath/reflect/dream consciousness cycles
-│   ├── wakey-user-model/     # User preference tracking, behavior patterns
-│   ├── wakey-learning/       # Self-improving skill loop (extract/refine/trajectory)
-│   ├── wakey-action/         # Mouse, keyboard, terminal, files, browser, grounding
-│   ├── wakey-safety/         # Cedar policy engine, action filtering
-│   ├── wakey-persona/        # Mood, communication style, personality evolution
-│   ├── wakey-voice/          # TTS/STT integration
-│   ├── wakey-overlay/        # Always-on-top window, sprites, chat bubbles
-│   ├── wakey-skills/         # Trait-based + WASM sandboxed extensible skills
-│   ├── wakey-sdk/            # SDK for community skill developers
+│   ├── wakey-context/        # Memory + skills storage (OpenViking L0/L1/L2 + ZeroClaw Memory trait)
+│   ├── wakey-senses/         # Perception: a11y, screen, clipboard, system, git
+│   ├── wakey-cortex/         # Brain: ZeroClaw agent loop + LLM client + heartbeat rhythms + decisions
+│   ├── wakey-action/         # Hands + safety: input, terminal, browser + Cedar policies
+│   ├── wakey-skills/         # Skills runtime: Hermes format + petgraph DAG + WASM sandbox + learning loop
+│   ├── wakey-overlay/        # Face: egui, sprites, chat bubbles
 │   └── wakey-app/            # Binary entry point
 ├── policies/                 # Cedar safety policy files
 ├── viking/                   # OpenViking context filesystem
@@ -43,21 +36,14 @@ wakey-types          (depends on nothing)
     ↓
 wakey-spine          (depends on types)
     ↓
+wakey-context        (depends on types, spine)
 wakey-senses         (depends on types, spine)
-wakey-memory         (depends on types, spine)
-wakey-heartbeat      (depends on types, spine)
-wakey-safety         (depends on types)
     ↓
-wakey-cortex         (depends on types, spine, memory, senses, safety)
-wakey-user-model     (depends on types, memory)
-wakey-learning       (depends on types, spine, memory, skills)
+wakey-cortex         (depends on types, spine, context, senses)
+wakey-skills         (depends on types, spine, context)
     ↓
-wakey-action         (depends on types, spine, safety, cortex)
-wakey-persona        (depends on types, spine, memory, user-model)
-wakey-voice          (depends on types, spine)
-wakey-overlay        (depends on types, spine, persona)
-wakey-skills         (depends on types, spine, safety)
-wakey-sdk            (depends on types, skills)
+wakey-action         (depends on types, spine, cortex)
+wakey-overlay        (depends on types, spine)
     ↓
 wakey-app            (depends on everything, ties it all together)
 ```

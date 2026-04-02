@@ -14,7 +14,7 @@ Wakey is your laptop, alive. An open-source AI companion that lives as an always
 - **Binary**: Single binary. Must compile to one executable.
 - **Memory target**: <20MB idle RAM. Every MB must be justified.
 - **LLM client**: OpenAI-compatible HTTP only. No vendor SDKs. `POST /v1/chat/completions` is the only endpoint we need.
-- **Workspace**: 16-crate Cargo workspace. See Cargo.toml for members.
+- **Workspace**: 9-crate Cargo workspace. See Cargo.toml for members.
 - **Event system**: All inter-crate communication through the Event Spine (`wakey-spine`, tokio broadcast channels). Never import one crate's internals into another.
 - **Dependency flow**: Strict downward. See CLAUDE.md for the full graph.
 
@@ -35,7 +35,7 @@ Wakey is your laptop, alive. An open-source AI companion that lives as an always
 - Don't use `unsafe` unless there is no safe alternative and you document why
 - Don't pull in heavy frameworks (no `axum`, no `actix` — this is a desktop app)
 - Don't add features "just in case" — build what's needed now
-- Don't create new crates — the 16 crates are defined. Put code in the right one.
+- Don't create new crates — the 9 crates are defined. Put code in the right one.
 - Don't import between peer crates directly — communicate through the spine
 - Don't use `tokio::spawn` without a cancellation mechanism (respect Shutdown events)
 
@@ -88,11 +88,15 @@ Config keys:  snake_case in TOML
 ## Per-Crate Instructions
 
 Each critical crate has its own `AGENTS.md` with specific rules. GSD auto-reads these when working inside a crate directory. Currently:
-- `crates/wakey-types/AGENTS.md` — Foundation types, events, config
+- `crates/wakey-types/AGENTS.md` — Foundation types, events, config, errors
 - `crates/wakey-spine/AGENTS.md` — Event bus rules
-- `crates/wakey-cortex/AGENTS.md` — LLM client and decision engine rules
-- `crates/wakey-heartbeat/AGENTS.md` — Consciousness cycle rules
-- `crates/wakey-overlay/AGENTS.md` — UI/overlay rules
+- `crates/wakey-context/AGENTS.md` — Memory + skills storage (OpenViking L0/L1/L2 + ZeroClaw Memory trait)
+- `crates/wakey-senses/AGENTS.md` — Perception (a11y, screen, clipboard, system, git)
+- `crates/wakey-cortex/AGENTS.md` — Brain (ZeroClaw agent loop + LLM client + heartbeat rhythms + decisions)
+- `crates/wakey-action/AGENTS.md` — Hands + safety (input, terminal, browser + Cedar policies)
+- `crates/wakey-skills/AGENTS.md` — Skills runtime (Hermes format + petgraph DAG + WASM sandbox + learning loop)
+- `crates/wakey-overlay/AGENTS.md` — Face (egui, sprites, chat bubbles)
+- `crates/wakey-app/AGENTS.md` — Binary entry point
 
 ## Reference Repos (Read Actual Code, Not Summaries)
 

@@ -7,7 +7,7 @@ Wakey is not a chatbot with a GUI. It's an event-driven nervous system.
 ```
                     ┌─────────────────────┐
                     │    WAKEY CORTEX      │
-                    │  (Decision Engine)   │
+                    │  (Brain + Heartbeat) │
                     │  "Should I speak?    │
                     │   Should I act?      │
                     │   Should I wait?"    │
@@ -24,7 +24,7 @@ Wakey is not a chatbot with a GUI. It's an event-driven nervous system.
         ┌──────────┬───────────┼───────────┬──────────┐
         ▼          ▼           ▼           ▼          ▼
    ┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐
-   │ SENSES  ││ MEMORY  ││ ACTION  ││ PERSONA ││ SKILLS  │
+   │ SENSES  ││ CONTEXT ││ ACTION  ││ SKILLS  ││ OVERLAY │
    └─────────┘└─────────┘└─────────┘└─────────┘└─────────┘
 ```
 
@@ -150,17 +150,13 @@ unless { context has user_confirmed && context.user_confirmed == true };
                        │
         ┌──────┬───────┼───────┬──────────┐
         ▼      ▼       ▼       ▼          ▼
-    overlay  action  cortex  persona   skills
-        │      │       │       │          │
-        │      ├───────┤       │          │
-        │      ▼       ▼       ▼          │
-        │   safety  memory  user-model    │
-        │              │                  │
-        ├──────────────┼──────────────────┤
-        ▼              ▼                  ▼
-     heartbeat      senses           learning
-        │              │                  │
-        ├──────────────┤                  │
+    overlay  action  cortex  skills    context
+                       │       │          │
+                       ├───────┤          │
+                       ▼       ▼          │
+                    senses   context      │
+                       │       │          │
+        ┌──────────────┼───────┘          │
         ▼              ▼                  ▼
       spine          spine             spine
         │              │                  │
