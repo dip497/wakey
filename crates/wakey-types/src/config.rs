@@ -1,5 +1,6 @@
 use crate::{WakeyError, WakeyResult};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::warn;
 
@@ -71,41 +72,32 @@ pub struct PersonaConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceConfig {
-    /// Enable voice mode
+    /// Enable voice plugin
     pub enabled: bool,
-    /// Voice provider: "deepgram" (future: "elevenlabs", "openai")
-    pub provider: String,
-    /// API key environment variable name
-    pub api_key_env: String,
-    /// STT model (deepgram: "nova-3")
-    pub stt_model: String,
-    /// TTS model (deepgram: "aura-2-theia-en")
-    pub tts_model: String,
-    /// Audio sample rate for ASR (16000 Hz)
-    pub asr_sample_rate: u32,
-    /// Audio sample rate for TTS (24000 Hz)
-    pub tts_sample_rate: u32,
-    /// Language for ASR (e.g., "en", "zh")
-    pub language: String,
-    /// Push-to-talk key (e.g., "space", "ctrl+space")
-    pub push_to_talk_key: String,
-    /// Endpointing timeout in ms (speech end detection)
-    pub endpointing_ms: u32,
+
+    /// Plugin name (e.g., "voice-livekit", "voice-deepgram", "voice-none")
+    pub plugin: String,
+
+    /// Path to plugin executable/script (relative to project root or absolute)
+    pub plugin_path: PathBuf,
+
+    /// Command to run plugin (e.g., "python3", "node", "./bin/voice-plugin")
+    pub plugin_command: String,
+
+    /// Environment variables to pass to plugin process
+    /// Values can contain ${VAR} references to expand from environment
+    #[serde(default)]
+    pub env: HashMap<String, String>,
 }
 
 impl Default for VoiceConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
-            provider: "deepgram".to_string(),
-            api_key_env: "DEEPGRAM_API_KEY".to_string(),
-            stt_model: "nova-3".to_string(),
-            tts_model: "aura-2-theia-en".to_string(),
-            asr_sample_rate: 16000,
-            tts_sample_rate: 24000,
-            language: "en".to_string(),
-            push_to_talk_key: "space".to_string(),
-            endpointing_ms: 300,
+            enabled: false,
+            plugin: "voice-none".to_string(),
+            plugin_path: PathBuf::from("plugins/voice-none/main.py"),
+            plugin_command: "python3".to_string(),
+            env: HashMap::new(),
         }
     }
 }
@@ -285,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_load_existing_config() {
-        // Create a temp file with valid config
+        // Create a temp file with valid config (new plugin-based voice config)
         let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
         let config_content = r#"
 [general]
@@ -322,15 +314,12 @@ proactive = false
 
 [voice]
 enabled = true
-provider = "deepgram"
-api_key_env = "DEEPGRAM_API_KEY"
-stt_model = "nova-3"
-tts_model = "aura-2-theia-en"
-asr_sample_rate = 16000
-tts_sample_rate = 24000
-language = "en"
-push_to_talk_key = "space"
-endpointing_ms = 300
+plugin = "voice-test"
+plugin_path = "plugins/test/main.py"
+plugin_command = "python3"
+
+[voice.env]
+TEST_API_KEY = "${TEST_API_KEY_ENV}"
 
 [llm]
 default_provider = "test"
@@ -352,7 +341,7 @@ providers = []
         assert_eq!(config.action.enabled, false);
         assert_eq!(config.persona.name, "TestBot");
         assert_eq!(config.voice.enabled, true);
-        assert_eq!(config.voice.provider, "deepgram");
+        assert_eq!(config.voice.plugin, "voice-test");
         assert_eq!(config.llm.default_provider, "test");
 
         // Verify path expansion - paths should not contain ~
@@ -399,12 +388,10 @@ providers = []
             assert_eq!(config.general.log_level, "info");
             assert_eq!(config.heartbeat.tick_interval_ms, 2000);
             assert_eq!(config.persona.name, "Buddy");
-            assert_eq!(config.llm.default_provider, "qwen");
 
-            // Verify voice config
-            assert_eq!(config.voice.enabled, true);
-            assert_eq!(config.voice.provider, "deepgram");
-            assert_eq!(config.voice.language, "en");
+            // Verify voice plugin config
+            assert_eq!(config.voice.enabled, false); // Default disabled
+            assert_eq!(config.voice.plugin, "voice-none");
 
             // Verify paths are expanded (no ~ prefix)
             assert!(!config.general.data_dir.starts_with("~"));

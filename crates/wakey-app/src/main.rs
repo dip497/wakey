@@ -6,23 +6,21 @@
 //! - LLM provider (S3)
 //! - Overlay with sprite and chat bubble (S4)
 //! - Decision loop that calls LLM periodically (S5)
-//! - Voice mode with push-to-talk (S6)
+//! - Voice plugin host (P4)
 //! - Memory + Skills integration (P2-S3)
 //! - Agent supervision for GSD (P3)
-//! - Voice-only mode: TTS speaker for ShouldSpeak events (P3)
 
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use wakey_context::{Memory, SqliteMemory};
 use wakey_cortex::AgentLoop;
 use wakey_cortex::heartbeat::HeartbeatRunner;
 use wakey_cortex::llm::{LlmProvider, OpenAiCompatible};
-use wakey_cortex::tts::TtsSpeaker;
-use wakey_cortex::voice::VoiceSession;
+use wakey_cortex::plugin_host::{PluginConfig, PluginHost};
 use wakey_overlay::run_overlay_with_spine;
 use wakey_spine::Spine;
 use wakey_types::config::WakeyConfig;
@@ -184,33 +182,42 @@ fn main() -> Result<()> {
                 });
             }
 
-            // Start TTS speaker listener (voice-only mode)
-            // Subscribes to ShouldSpeak events and speaks through speaker
-            // Must run in its own thread because cpal::Stream is !Send
+            // Start voice plugin host (P4 - pluggable voice architecture)
+            // The plugin handles all voice I/O via stdin/stdout JSON protocol
             if config_clone.voice.enabled {
-                let tts_spine = spine_clone.clone();
-                let tts_api_key_env = config_clone.voice.api_key_env.clone();
-                let tts_model = config_clone.voice.tts_model.clone();
-                let tts_sample_rate = config_clone.voice.tts_sample_rate;
-                let tts_is_speaking = is_speaking.clone();
+                let plugin_spine = spine_clone.clone();
+                let plugin_config = PluginConfig {
+                    enabled: config_clone.voice.enabled,
+                    plugin: config_clone.voice.plugin.clone(),
+                    plugin_path: config_clone.voice.plugin_path.clone(),
+                    plugin_command: config_clone.voice.plugin_command.clone(),
+                    env: config_clone.voice.env.clone(),
+                };
 
                 std::thread::spawn(move || {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
                         .build()
-                        .expect("TTS runtime failed");
+                        .expect("Plugin runtime failed");
 
                     rt.block_on(async move {
-                        run_tts_listener(
-                            tts_spine,
-                            tts_api_key_env,
-                            tts_model,
-                            tts_sample_rate,
-                            tts_is_speaking,
-                        ).await;
+                        let shutdown_rx = plugin_spine.subscribe();
+                        let mut host = PluginHost::new(plugin_config, plugin_spine.clone());
+
+                        match host.start() {
+                            Ok(()) => {
+                                info!("Voice plugin started");
+                                host.run(shutdown_rx).await;
+                            }
+                            Err(e) => {
+                                warn!(error = %e, "Failed to start voice plugin");
+                            }
+                        }
+
+                        info!("Voice plugin stopped");
                     });
                 });
-                info!("TTS speaker listener started");
+                info!("Voice plugin host initialized");
             }
 
             // Start event logger
@@ -227,79 +234,16 @@ fn main() -> Result<()> {
         });
     });
 
-    // Start voice session in its own thread (cpal Stream is !Send, can't use tokio::spawn)
-    // Voice runs independently and uses server-side VAD for speech detection.
-    // Push-to-talk (Space key) will be added when global keyboard hook is implemented.
-    // Note: user_talking flag is set by decision loop when it receives VoiceListeningStarted/Stopped events
+    // Start voice plugin host in its own thread (P4)
+    // Plugin subprocess handles all voice I/O, core stays clean
     if config.voice.enabled {
-        let voice_spine = spine.clone();
-        let voice_config = config.voice.clone();
-        // Pass the same LLM provider config that the decision loop uses
-        let voice_llm_config = config
-            .llm
-            .providers
-            .iter()
-            .find(|p| p.name == config.llm.default_provider)
-            .cloned()
-            .unwrap_or_else(|| {
-                config.llm.providers.first().cloned().unwrap_or_else(|| {
-                    wakey_types::config::LlmProviderConfig {
-                        name: "default".to_string(),
-                        api_base: "http://localhost:11434/v1".to_string(),
-                        model: "llama3.2".to_string(),
-                        api_key_env: "".to_string(),
-                    }
-                })
-            });
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Voice runtime failed");
-
-            rt.block_on(async move {
-                info!("Voice session started (push-to-talk: Space, VAD: enabled)");
-
-                // Run voice sessions in a loop
-                loop {
-                    match VoiceSession::new(
-                        voice_config.clone(),
-                        voice_llm_config.clone(),
-                        voice_spine.clone(),
-                    ) {
-                        Ok(mut session) => {
-                            // Run one STT→LLM→TTS cycle
-                            if let Err(e) = session.start().await {
-                                // Check if it's a shutdown or disabled error
-                                match e {
-                                    wakey_cortex::voice::VoiceError::Disabled => {
-                                        info!("Voice disabled in config");
-                                        break;
-                                    }
-                                    other => {
-                                        warn!(error = %other, "Voice session ended, restarting...");
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!(error = %e, "Failed to create voice session");
-                            // Don't restart if API key is missing
-                            if matches!(e, wakey_cortex::voice::VoiceError::MissingApiKey(_)) {
-                                break;
-                            }
-                        }
-                    }
-
-                    // Small pause between sessions
-                    tokio::time::sleep(Duration::from_secs(1)).await;
-                }
-
-                info!("Voice session stopped");
-            });
-        });
+        info!(
+            plugin = %config.voice.plugin,
+            path = %config.voice.plugin_path.display(),
+            "Voice plugin configured"
+        );
     } else {
-        info!("Voice mode disabled in config");
+        info!("Voice plugin disabled in config");
     }
 
     info!("Starting overlay windows...");
@@ -785,99 +729,6 @@ impl EventLogger {
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     warn!(lagged = n, "Event logger lagged, continuing");
                 }
-            }
-        }
-    }
-}
-
-/// TTS listener — speaks ShouldSpeak events through the speaker.
-///
-/// Voice-only mode: no chat bubble, Wakey speaks through speaker.
-/// Flow:
-/// - ShouldSpeak event received → set is_speaking=true → emit VoiceWakeySpeaking → speak via TTS → set is_speaking=false → emit VoiceSessionEnded
-///
-/// Must run in its own thread with dedicated tokio runtime because TtsSpeaker
-/// contains cpal::Stream which is !Send.
-async fn run_tts_listener(
-    spine: Spine,
-    api_key_env: String,
-    tts_model: String,
-    tts_sample_rate: u32,
-    is_speaking: Arc<AtomicBool>,
-) {
-    // Create TTS speaker
-    let mut speaker = match TtsSpeaker::with_config(&api_key_env, &tts_model, tts_sample_rate) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!(error = %e, "Failed to create TTS speaker");
-            return;
-        }
-    };
-
-    let mut event_rx = spine.subscribe();
-
-    info!("TTS listener started with speech overlap protection");
-
-    loop {
-        // Handle events from spine
-        match event_rx.recv().await {
-            Ok(event) => {
-                match &event {
-                    WakeyEvent::ShouldSpeak {
-                        suggested_text: Some(text),
-                        reason,
-                        urgency,
-                    } => {
-                        info!(
-                            text = %text,
-                            reason = %reason,
-                            urgency = ?urgency,
-                            "TTS: ShouldSpeak received"
-                        );
-
-                        // Mark that we're speaking (prevents decision loop from interrupting)
-                        is_speaking.store(true, Ordering::SeqCst);
-
-                        // Emit VoiceWakeySpeaking event (overlay shows talking animation)
-                        spine.emit(WakeyEvent::VoiceWakeySpeaking { text: text.clone() });
-
-                        // Speak through TTS
-                        if let Err(e) = speaker.speak(text).await {
-                            tracing::error!(error = %e, "TTS failed");
-                            spine.emit(WakeyEvent::VoiceError {
-                                message: e.to_string(),
-                            });
-                        }
-
-                        // Mark that we're done speaking
-                        is_speaking.store(false, Ordering::SeqCst);
-
-                        // Emit session ended (overlay returns to idle)
-                        spine.emit(WakeyEvent::VoiceSessionEnded);
-                    }
-
-                    WakeyEvent::ShouldSpeak { reason, .. } => {
-                        tracing::warn!(reason = %reason, "ShouldSpeak received but no text");
-                    }
-
-                    WakeyEvent::Shutdown => {
-                        info!("TTS listener shutting down");
-                        is_speaking.store(false, Ordering::SeqCst);
-                        speaker.stop();
-                        break;
-                    }
-
-                    _ => {}
-                }
-            }
-
-            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                info!("Spine closed, stopping TTS listener");
-                break;
-            }
-
-            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                tracing::warn!(lagged = n, "TTS listener lagged, continuing");
             }
         }
     }

@@ -34,16 +34,19 @@ style = "casual"              # casual, formal, playful, minimal
 proactive = true              # Should Wakey initiate conversations?
 
 [voice]
-enabled = true                # Enable voice mode
-provider = "deepgram"         # Voice provider: deepgram
-api_key_env = "DEEPGRAM_API_KEY"  # Environment variable for API key
-stt_model = "nova-3"          # Deepgram STT model
-tts_model = "aura-2-theia-en" # Deepgram TTS model
-asr_sample_rate = 16000       # 16kHz for ASR
-tts_sample_rate = 24000       # 24kHz for TTS
-language = "en"               # ASR language: en, zh, etc.
-push_to_talk_key = "space"    # Key to hold for voice input
-endpointing_ms = 300          # Speech end detection timeout (ms)
+enabled = false               # Enable voice plugin (set to true when you configure a plugin)
+plugin = "voice-none"         # Plugin name: voice-livekit, voice-deepgram, voice-local, voice-none
+plugin_path = "plugins/voice-none/main.py"  # Path to plugin script/binary
+plugin_command = "python3"    # Command to run plugin: python3, node, ./bin/plugin
+
+# Environment variables passed to plugin process
+# Use ${VAR} to reference environment variables
+[voice.env]
+# LIVEKIT_URL = "${LIVEKIT_URL}"
+# LIVEKIT_API_KEY = "${LIVEKIT_API_KEY}"
+# LIVEKIT_API_SECRET = "${LIVEKIT_API_SECRET}"
+# DEEPGRAM_API_KEY = "${DEEPGRAM_API_KEY}"
+# GROQ_API_KEY = "${GROQ_API_KEY}"
 
 [llm]
 default_provider = "groq"

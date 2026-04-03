@@ -1,0 +1,6 @@
+livekit-agents>=1.0
+livekit-plugins-deepgram
+livekit-plugins-silero
+livekit-plugins-turn-detector
+livekit-plugins-noise-cancellation
+python-dotenv
