@@ -46,29 +46,25 @@ push_to_talk_key = "space"    # Key to hold for voice input
 endpointing_ms = 300          # Speech end detection timeout (ms)
 
 [llm]
-default_provider = "qwen"
+default_provider = "groq"
 
-# OpenAI-compatible providers only — works with Ollama, OpenRouter, vLLM, etc.
+# Groq — GPT-OSS 20B, 918 tokens/sec, ~0.6s first token
+[[llm.providers]]
+name = "groq"
+api_base = "https://api.groq.com/openai/v1"
+model = "openai/gpt-oss-20b"
+api_key_env = "GROQ_API_KEY"
+
+# OpenRouter free (fallback)
+[[llm.providers]]
+name = "openrouter"
+api_base = "https://openrouter.ai/api/v1"
+model = "openrouter/free"
+api_key_env = "OPENROUTER_API_KEY"
+
+# Local Ollama (offline fallback)
 [[llm.providers]]
 name = "ollama"
 api_base = "http://localhost:11434/v1"
 model = "llama3.2"
 api_key_env = ""
-
-[[llm.providers]]
-name = "openrouter"
-api_base = "https://openrouter.ai/api/v1"
-model = "anthropic/claude-sonnet-4-6"
-api_key_env = "OPENROUTER_API_KEY"
-
-[[llm.providers]]
-name = "qwen"
-api_base = "https://coding-intl.dashscope.aliyuncs.com/v1"
-model = "qwen3.5-plus"
-api_key_env = "DASHSCOPE_API_KEY"
-
-[[llm.providers]]
-name = "glm"
-api_base = "https://open.bigmodel.cn/api/paas/v4"
-model = "glm-5"
-api_key_env = "GLM_API_KEY"

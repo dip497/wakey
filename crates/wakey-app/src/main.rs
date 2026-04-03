@@ -14,6 +14,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 use wakey_context::{Memory, SqliteMemory};
@@ -59,11 +60,18 @@ fn main() -> Result<()> {
     // Check if .gsd/ exists for agent supervision
     let gsd_exists = PathBuf::from(".gsd").exists();
 
+    // Create global speaking flags (P3 - voice overlap fix)
+    // These are shared between TTS listener, voice session, and decision loop
+    let is_speaking = Arc::new(AtomicBool::new(false));
+    let user_talking = Arc::new(AtomicBool::new(false));
+
     // Start heartbeat runner and decision loop in a background thread with tokio runtime
     let spine_clone = spine.clone();
     let config_clone = config.clone();
     let provider_clone = provider.clone();
     let memory_clone = memory.clone();
+    let is_speaking_clone = is_speaking.clone();
+    let user_talking_clone = user_talking.clone();
     let skills_dir = config
         .general
         .data_dir
@@ -158,6 +166,8 @@ fn main() -> Result<()> {
                 memory_clone,
                 config_clone.persona.name.clone(),
                 decision_shutdown_rx,
+                is_speaking_clone,
+                user_talking_clone,
             ));
 
             // Start agent supervisor if .gsd/ exists
@@ -182,6 +192,7 @@ fn main() -> Result<()> {
                 let tts_api_key_env = config_clone.voice.api_key_env.clone();
                 let tts_model = config_clone.voice.tts_model.clone();
                 let tts_sample_rate = config_clone.voice.tts_sample_rate;
+                let tts_is_speaking = is_speaking.clone();
 
                 std::thread::spawn(move || {
                     let rt = tokio::runtime::Builder::new_current_thread()
@@ -195,6 +206,7 @@ fn main() -> Result<()> {
                             tts_api_key_env,
                             tts_model,
                             tts_sample_rate,
+                            tts_is_speaking,
                         ).await;
                     });
                 });
@@ -218,9 +230,27 @@ fn main() -> Result<()> {
     // Start voice session in its own thread (cpal Stream is !Send, can't use tokio::spawn)
     // Voice runs independently and uses server-side VAD for speech detection.
     // Push-to-talk (Space key) will be added when global keyboard hook is implemented.
+    // Note: user_talking flag is set by decision loop when it receives VoiceListeningStarted/Stopped events
     if config.voice.enabled {
         let voice_spine = spine.clone();
         let voice_config = config.voice.clone();
+        // Pass the same LLM provider config that the decision loop uses
+        let voice_llm_config = config
+            .llm
+            .providers
+            .iter()
+            .find(|p| p.name == config.llm.default_provider)
+            .cloned()
+            .unwrap_or_else(|| {
+                config.llm.providers.first().cloned().unwrap_or_else(|| {
+                    wakey_types::config::LlmProviderConfig {
+                        name: "default".to_string(),
+                        api_base: "http://localhost:11434/v1".to_string(),
+                        model: "llama3.2".to_string(),
+                        api_key_env: "".to_string(),
+                    }
+                })
+            });
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -232,7 +262,11 @@ fn main() -> Result<()> {
 
                 // Run voice sessions in a loop
                 loop {
-                    match VoiceSession::new(voice_config.clone(), voice_spine.clone()) {
+                    match VoiceSession::new(
+                        voice_config.clone(),
+                        voice_llm_config.clone(),
+                        voice_spine.clone(),
+                    ) {
                         Ok(mut session) => {
                             // Run one STT→LLM→TTS cycle
                             if let Err(e) = session.start().await {
@@ -345,12 +379,16 @@ fn create_llm_provider(config: &WakeyConfig) -> Result<Arc<dyn LlmProvider>> {
 /// - Startup greeting after 5 seconds
 /// - Stores conversations in memory
 /// - Recalls last session on startup
+/// - Respects speaking flags: won't interrupt TTS or user speech
+#[allow(clippy::too_many_arguments)]
 async fn decision_loop(
     spine: Spine,
     provider: Arc<dyn LlmProvider>,
     memory: Arc<dyn Memory>,
     persona_name: String,
     mut shutdown_rx: tokio::sync::broadcast::Receiver<WakeyEvent>,
+    is_speaking: Arc<AtomicBool>,
+    user_talking: Arc<AtomicBool>,
 ) {
     let mut event_rx = spine.subscribe();
     let mut tick_count = 0u32;
@@ -360,7 +398,7 @@ async fn decision_loop(
     // Tick-based speech interval (15 ticks ≈ 30s at 2s tick interval)
     const TICKS_BETWEEN_SPEECH: u32 = 15;
 
-    info!("Decision loop started");
+    info!("Decision loop started with speech overlap protection");
 
     // Startup greeting after a short delay
     let startup_spine = spine.clone();
@@ -397,9 +435,16 @@ async fn decision_loop(
                         }
 
                         // Every N ticks, ask LLM to say something (if we have window context)
+                        // BUT: skip if Wakey is speaking or user is talking (P3 overlap fix)
                         if tick_count.is_multiple_of(TICKS_BETWEEN_SPEECH) && !last_window.is_empty() {
-                            info!(tick = tick_count, window = %last_window, "Periodic speech trigger");
-                            ask_llm_to_speak(&spine, &provider, &memory, &persona_name, &last_window).await;
+                            if is_speaking.load(Ordering::SeqCst) {
+                                debug!(tick = tick_count, "Skipping speech trigger - Wakey is speaking");
+                            } else if user_talking.load(Ordering::SeqCst) {
+                                debug!(tick = tick_count, "Skipping speech trigger - user is talking");
+                            } else {
+                                info!(tick = tick_count, window = %last_window, "Periodic speech trigger");
+                                ask_llm_to_speak(&spine, &provider, &memory, &persona_name, &last_window).await;
+                            }
                         }
                     }
 
@@ -409,6 +454,17 @@ async fn decision_loop(
                             debug!(window = %window, "Window focus changed");
                             last_window = window.clone();
                         }
+                    }
+
+                    // Voice events - update user_talking flag (P3)
+                    WakeyEvent::VoiceListeningStarted => {
+                        user_talking.store(true, Ordering::SeqCst);
+                        info!("User talking flag set - decision loop will not interrupt");
+                    }
+
+                    WakeyEvent::VoiceListeningStopped => {
+                        user_talking.store(false, Ordering::SeqCst);
+                        info!("User talking flag cleared - decision loop can speak again");
                     }
 
                     WakeyEvent::Breath => {
@@ -717,7 +773,7 @@ impl EventLogger {
 ///
 /// Voice-only mode: no chat bubble, Wakey speaks through speaker.
 /// Flow:
-/// - ShouldSpeak event received → emit VoiceWakeySpeaking → speak via TTS → emit VoiceSessionEnded
+/// - ShouldSpeak event received → set is_speaking=true → emit VoiceWakeySpeaking → speak via TTS → set is_speaking=false → emit VoiceSessionEnded
 ///
 /// Must run in its own thread with dedicated tokio runtime because TtsSpeaker
 /// contains cpal::Stream which is !Send.
@@ -726,6 +782,7 @@ async fn run_tts_listener(
     api_key_env: String,
     tts_model: String,
     tts_sample_rate: u32,
+    is_speaking: Arc<AtomicBool>,
 ) {
     // Create TTS speaker
     let mut speaker = match TtsSpeaker::with_config(&api_key_env, &tts_model, tts_sample_rate) {
@@ -738,7 +795,7 @@ async fn run_tts_listener(
 
     let mut event_rx = spine.subscribe();
 
-    info!("TTS listener started, waiting for ShouldSpeak events");
+    info!("TTS listener started with speech overlap protection");
 
     loop {
         // Handle events from spine
@@ -757,6 +814,9 @@ async fn run_tts_listener(
                             "TTS: ShouldSpeak received"
                         );
 
+                        // Mark that we're speaking (prevents decision loop from interrupting)
+                        is_speaking.store(true, Ordering::SeqCst);
+
                         // Emit VoiceWakeySpeaking event (overlay shows talking animation)
                         spine.emit(WakeyEvent::VoiceWakeySpeaking { text: text.clone() });
 
@@ -768,6 +828,9 @@ async fn run_tts_listener(
                             });
                         }
 
+                        // Mark that we're done speaking
+                        is_speaking.store(false, Ordering::SeqCst);
+
                         // Emit session ended (overlay returns to idle)
                         spine.emit(WakeyEvent::VoiceSessionEnded);
                     }
@@ -778,6 +841,7 @@ async fn run_tts_listener(
 
                     WakeyEvent::Shutdown => {
                         info!("TTS listener shutting down");
+                        is_speaking.store(false, Ordering::SeqCst);
                         speaker.stop();
                         break;
                     }

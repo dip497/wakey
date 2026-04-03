@@ -8,6 +8,11 @@
 //! - Send: {"type": "Speak", "text": "..."} then {"type": "Flush"}
 //! - Receive: raw PCM16 audio binary frames
 //! - Play through cpal output device
+//!
+//! P3 improvements:
+//! - Pre-buffer first 5 audio chunks (~200ms) before starting playback
+//! - Larger ring buffer for smoother audio
+//! - Silence padding when buffer is empty
 
 use cpal::Stream;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -29,6 +34,14 @@ const DEFAULT_TTS_MODEL: &str = "aura-2-theia-en";
 
 /// Default sample rate for TTS output
 const DEFAULT_SAMPLE_RATE: u32 = 24000;
+
+/// Number of audio chunks to pre-buffer before starting playback (P3)
+/// ~200ms of audio at 24kHz mono 16-bit
+const PRE_BUFFER_CHUNKS: usize = 5;
+
+/// Maximum buffer size in bytes (P3 - larger for smoother playback)
+/// 24000 Hz * 2 bytes * 1 channel * 10 seconds = 480KB
+const MAX_BUFFER_SIZE: usize = 480_000;
 
 // ── TTS Speaker ──
 
@@ -95,12 +108,17 @@ impl TtsSpeaker {
     ///
     /// Connects to Deepgram TTS, sends text, receives audio, plays through speaker.
     /// Returns when audio playback is complete.
+    ///
+    /// P3: Pre-buffers first 5 audio chunks (~200ms) before starting playback for smoother audio.
     pub async fn speak(&mut self, text: &str) -> WakeyResult<()> {
         if text.is_empty() {
             return Ok(());
         }
 
         info!(text_len = text.len(), "TTS speaking");
+
+        // Clear any leftover audio from previous playback
+        self.audio_buffer.lock().unwrap().clear();
 
         // Build WebSocket URL with query parameters
         let url = format!(
@@ -155,22 +173,99 @@ impl TtsSpeaker {
 
         debug!("TTS sent Speak + Flush");
 
-        // Start audio output stream
+        // P3: Pre-buffer first N audio chunks before starting playback
+        let mut chunk_count = 0;
+        let mut pre_buffer: Vec<Vec<u8>> = Vec::new();
+
+        info!(
+            "Pre-buffering {} audio chunks before playback",
+            PRE_BUFFER_CHUNKS
+        );
+
+        // Receive audio chunks and pre-buffer
+        while chunk_count < PRE_BUFFER_CHUNKS {
+            match ws_rx.next().await {
+                Some(Ok(WsMessage::Binary(audio_data))) => {
+                    if !audio_data.is_empty() {
+                        pre_buffer.push(audio_data.to_vec());
+                        chunk_count += 1;
+                        debug!(
+                            "TTS pre-buffer chunk {} received {} bytes",
+                            chunk_count,
+                            audio_data.len()
+                        );
+                    }
+                }
+                Some(Ok(WsMessage::Text(text))) => {
+                    // Check if we got Flushed signal early (short text)
+                    if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if meta["type"].as_str() == Some("Flushed") {
+                            debug!("TTS Flushed during pre-buffer (short text)");
+                            break;
+                        }
+                        if meta["type"].as_str() == Some("Error") {
+                            error!(
+                                "TTS Error during pre-buffer: {}",
+                                meta["message"].as_str().unwrap_or("unknown")
+                            );
+                            return Err(wakey_types::WakeyError::Network(
+                                meta["message"].as_str().unwrap_or("TTS error").to_string(),
+                            ));
+                        }
+                    }
+                }
+                Some(Ok(WsMessage::Close(_))) => {
+                    debug!("TTS WebSocket closed during pre-buffer");
+                    break;
+                }
+                Some(Err(e)) => {
+                    error!("TTS WebSocket error during pre-buffer: {}", e);
+                    return Err(wakey_types::WakeyError::Network(e.to_string()));
+                }
+                None => break,
+                _ => {}
+            }
+        }
+
+        // Push pre-buffered audio to the playback buffer
+        {
+            let mut buf = self.audio_buffer.lock().unwrap();
+            for chunk in pre_buffer {
+                // Limit buffer size to prevent memory issues
+                if buf.len() < MAX_BUFFER_SIZE {
+                    buf.push_back(chunk);
+                }
+            }
+        }
+
+        info!(
+            "Pre-buffer complete with {} chunks, starting playback",
+            chunk_count
+        );
+
+        // Now start audio output stream
         self.start_audio_output()?;
 
         self.playing.store(true, Ordering::SeqCst);
         let playing = self.playing.clone();
         let audio_buffer = self.audio_buffer.clone();
 
-        // Receive audio chunks (raw PCM16 binary)
+        // Continue receiving remaining audio chunks
         while playing.load(Ordering::SeqCst) {
             match ws_rx.next().await {
                 Some(Ok(WsMessage::Binary(audio_data))) => {
                     // Raw PCM16 audio - queue for playback
                     if !audio_data.is_empty() {
                         let mut buf = audio_buffer.lock().unwrap();
-                        buf.push_back(audio_data.to_vec());
-                        debug!("TTS received {} bytes", audio_data.len());
+                        // Limit buffer size
+                        if buf.len() < MAX_BUFFER_SIZE {
+                            buf.push_back(audio_data.to_vec());
+                            debug!(
+                                "TTS received {} bytes (buffer size: {})",
+                                audio_data.len(),
+                                buf.len()
+                            );
+                        }
                     }
                 }
                 Some(Ok(WsMessage::Text(text))) => {

@@ -47,6 +47,7 @@ Be yourself. Don't announce that you're an AI. Just be Wakey."#;
 /// Orchestrates the full voice conversation flow.
 pub struct VoiceSession {
     config: VoiceConfig,
+    llm_config: wakey_types::config::LlmProviderConfig,
     spine: Spine,
     api_key: String,
 
@@ -71,12 +72,17 @@ pub struct VoiceSession {
 
 impl VoiceSession {
     /// Create a new voice session.
-    pub fn new(config: VoiceConfig, spine: Spine) -> Result<Self, VoiceError> {
+    pub fn new(
+        config: VoiceConfig,
+        llm_config: wakey_types::config::LlmProviderConfig,
+        spine: Spine,
+    ) -> Result<Self, VoiceError> {
         let api_key = std::env::var(&config.api_key_env)
             .map_err(|_| VoiceError::MissingApiKey(config.api_key_env.clone()))?;
 
         Ok(Self {
             config,
+            llm_config,
             spine,
             api_key,
             input_stream: None,
@@ -312,9 +318,16 @@ impl VoiceSession {
                             }
 
                             // Check for endpointing (speech ended)
+                            // Only end if we actually have transcribed text —
+                            // Deepgram sends speech_final on silence too
                             if response.speech_final.unwrap_or(false) {
-                                debug!("STT speech_final detected");
-                                speech_ended_clone.store(true, Ordering::SeqCst);
+                                let has_text = !transcription_clone.lock().unwrap().is_empty();
+                                if has_text {
+                                    debug!("STT speech_final with text — ending");
+                                    speech_ended_clone.store(true, Ordering::SeqCst);
+                                } else {
+                                    debug!("STT speech_final but empty — continuing to listen");
+                                }
                             }
                         }
                     }
@@ -405,14 +418,8 @@ impl VoiceSession {
             "content": user_text
         }));
 
-        // Use configured LLM provider from environment
-        let llm_config = wakey_types::config::LlmProviderConfig {
-            name: "voice".to_string(),
-            api_base: std::env::var("LLM_API_BASE")
-                .unwrap_or_else(|_| "http://localhost:11434/v1".to_string()),
-            model: std::env::var("LLM_MODEL").unwrap_or_else(|_| "qwen2.5:7b".to_string()),
-            api_key_env: "LLM_API_KEY".to_string(),
-        };
+        // Use LLM provider from config (same provider as main decision loop)
+        let llm_config = self.llm_config.clone();
 
         let provider = crate::llm::OpenAiCompatible::new(&llm_config)
             .map_err(|e| VoiceError::Llm(e.to_string()))?;
@@ -740,13 +747,19 @@ pub enum VoiceError {
 /// Handles push-to-talk key detection and voice session triggering.
 pub struct PushToTalkHandler {
     config: VoiceConfig,
+    llm_config: wakey_types::config::LlmProviderConfig,
     spine: Spine,
     active: Arc<AtomicBool>,
 }
 
 impl PushToTalkHandler {
-    pub fn new(config: VoiceConfig, spine: Spine) -> Self {
+    pub fn new(
+        config: VoiceConfig,
+        llm_config: wakey_types::config::LlmProviderConfig,
+        spine: Spine,
+    ) -> Self {
         Self {
+            llm_config,
             config,
             spine,
             active: Arc::new(AtomicBool::new(false)),
@@ -761,7 +774,11 @@ impl PushToTalkHandler {
 
         self.active.store(true, Ordering::SeqCst);
 
-        match VoiceSession::new(self.config.clone(), self.spine.clone()) {
+        match VoiceSession::new(
+            self.config.clone(),
+            self.llm_config.clone(),
+            self.spine.clone(),
+        ) {
             Ok(mut session) => {
                 if let Err(e) = session.start().await {
                     error!("Voice session error: {}", e);
