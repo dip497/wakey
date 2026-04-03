@@ -37,6 +37,15 @@ pub enum WakeyError {
 
     #[error("Database error: {0}")]
     Database(String),
+
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("Hardware error: {0}")]
+    Hardware(String),
+
+    #[error("Voice error: {0}")]
+    Voice(String),
 }
 
 impl From<rusqlite::Error> for WakeyError {

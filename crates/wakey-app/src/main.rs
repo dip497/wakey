@@ -9,6 +9,7 @@
 //! - Voice mode with push-to-talk (S6)
 //! - Memory + Skills integration (P2-S3)
 //! - Agent supervision for GSD (P3)
+//! - Voice-only mode: TTS speaker for ShouldSpeak events (P3)
 
 use anyhow::Result;
 use std::path::PathBuf;
@@ -19,6 +20,7 @@ use wakey_context::{Memory, SqliteMemory};
 use wakey_cortex::AgentLoop;
 use wakey_cortex::heartbeat::HeartbeatRunner;
 use wakey_cortex::llm::{LlmProvider, OpenAiCompatible};
+use wakey_cortex::tts::TtsSpeaker;
 use wakey_cortex::voice::VoiceSession;
 use wakey_overlay::run_overlay_with_spine;
 use wakey_spine::Spine;
@@ -170,6 +172,33 @@ fn main() -> Result<()> {
                     );
                     supervisor.run().await;
                 });
+            }
+
+            // Start TTS speaker listener (voice-only mode)
+            // Subscribes to ShouldSpeak events and speaks through speaker
+            // Must run in its own thread because cpal::Stream is !Send
+            if config_clone.voice.enabled {
+                let tts_spine = spine_clone.clone();
+                let tts_api_key_env = config_clone.voice.api_key_env.clone();
+                let tts_model = config_clone.voice.tts_model.clone();
+                let tts_sample_rate = config_clone.voice.tts_sample_rate;
+
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("TTS runtime failed");
+
+                    rt.block_on(async move {
+                        run_tts_listener(
+                            tts_spine,
+                            tts_api_key_env,
+                            tts_model,
+                            tts_sample_rate,
+                        ).await;
+                    });
+                });
+                info!("TTS speaker listener started");
             }
 
             // Start event logger
@@ -679,6 +708,91 @@ impl EventLogger {
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     warn!(lagged = n, "Event logger lagged, continuing");
                 }
+            }
+        }
+    }
+}
+
+/// TTS listener — speaks ShouldSpeak events through the speaker.
+///
+/// Voice-only mode: no chat bubble, Wakey speaks through speaker.
+/// Flow:
+/// - ShouldSpeak event received → emit VoiceWakeySpeaking → speak via TTS → emit VoiceSessionEnded
+///
+/// Must run in its own thread with dedicated tokio runtime because TtsSpeaker
+/// contains cpal::Stream which is !Send.
+async fn run_tts_listener(
+    spine: Spine,
+    api_key_env: String,
+    tts_model: String,
+    tts_sample_rate: u32,
+) {
+    // Create TTS speaker
+    let mut speaker = match TtsSpeaker::with_config(&api_key_env, &tts_model, tts_sample_rate) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to create TTS speaker");
+            return;
+        }
+    };
+
+    let mut event_rx = spine.subscribe();
+
+    info!("TTS listener started, waiting for ShouldSpeak events");
+
+    loop {
+        // Handle events from spine
+        match event_rx.recv().await {
+            Ok(event) => {
+                match &event {
+                    WakeyEvent::ShouldSpeak {
+                        suggested_text: Some(text),
+                        reason,
+                        urgency,
+                    } => {
+                        info!(
+                            text = %text,
+                            reason = %reason,
+                            urgency = ?urgency,
+                            "TTS: ShouldSpeak received"
+                        );
+
+                        // Emit VoiceWakeySpeaking event (overlay shows talking animation)
+                        spine.emit(WakeyEvent::VoiceWakeySpeaking { text: text.clone() });
+
+                        // Speak through TTS
+                        if let Err(e) = speaker.speak(text).await {
+                            tracing::error!(error = %e, "TTS failed");
+                            spine.emit(WakeyEvent::VoiceError {
+                                message: e.to_string(),
+                            });
+                        }
+
+                        // Emit session ended (overlay returns to idle)
+                        spine.emit(WakeyEvent::VoiceSessionEnded);
+                    }
+
+                    WakeyEvent::ShouldSpeak { reason, .. } => {
+                        tracing::warn!(reason = %reason, "ShouldSpeak received but no text");
+                    }
+
+                    WakeyEvent::Shutdown => {
+                        info!("TTS listener shutting down");
+                        speaker.stop();
+                        break;
+                    }
+
+                    _ => {}
+                }
+            }
+
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                info!("Spine closed, stopping TTS listener");
+                break;
+            }
+
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!(lagged = n, "TTS listener lagged, continuing");
             }
         }
     }

@@ -229,11 +229,13 @@ fn handle_spine_event(
     event: WakeyEvent,
     state: &Arc<Mutex<OverlayState>>,
     should_close: &Arc<AtomicBool>,
-    now: Instant,
+    _now: Instant,
 ) {
     let mut overlay_state = state.lock().unwrap();
 
     match event {
+        // Voice-only mode: ShouldSpeak triggers TTS, no bubble
+        // TTS listener emits VoiceWakeySpeaking for sprite animation
         WakeyEvent::ShouldSpeak {
             suggested_text: Some(text),
             reason,
@@ -243,9 +245,10 @@ fn handle_spine_event(
                 text = %text,
                 reason = %reason,
                 urgency = ?urgency,
-                "ShouldSpeak event received - showing speech bubble"
+                "ShouldSpeak event received (voice-only mode - no bubble)"
             );
-            overlay_state.bubble.show(&text, now);
+            // No bubble - TTS listener will speak this
+            // VoiceWakeySpeaking event will be emitted by TTS listener for animation
         }
 
         WakeyEvent::ShouldSpeak { reason, .. } => {
@@ -272,7 +275,7 @@ fn handle_spine_event(
                 sleepy: false,
                 bounce: false,
             });
-            overlay_state.bubble.show("Listening...", now);
+            // No bubble in voice-only mode
         }
 
         WakeyEvent::VoiceListeningStopped => {
@@ -288,9 +291,7 @@ fn handle_spine_event(
 
         WakeyEvent::VoiceUserSpeaking { text, is_final } => {
             tracing::debug!(text = %text, is_final, "User speaking");
-            if is_final {
-                overlay_state.bubble.show(&text, now);
-            }
+            // No bubble in voice-only mode
         }
 
         WakeyEvent::VoiceWakeyThinking => {
@@ -304,13 +305,13 @@ fn handle_spine_event(
                 sleepy: false,
                 bounce: false,
             });
-            overlay_state.bubble.show("...", now);
+            // No bubble in voice-only mode
         }
 
         WakeyEvent::VoiceWakeySpeaking { text } => {
-            tracing::debug!(text = %text, "Wakey speaking");
+            tracing::debug!(text = %text, "Wakey speaking (voice-only mode)");
             overlay_state.voice_state = VoiceState::Speaking;
-            // Set happy/talking expression
+            // Set happy/talking expression (sprite animation only, no bubble)
             overlay_state.sprite.set_expression(Expression {
                 glow_color: [0.95, 0.75, 0.35, 0.90], // Bright amber - talking
                 anim_speed: 1.4,
@@ -318,7 +319,7 @@ fn handle_spine_event(
                 sleepy: false,
                 bounce: true,
             });
-            overlay_state.bubble.show(&text, now);
+            // No bubble - voice-only mode
         }
 
         WakeyEvent::VoiceSessionEnded => {
@@ -336,9 +337,7 @@ fn handle_spine_event(
             overlay_state
                 .sprite
                 .set_expression(Expression::from_mood(Mood::Concerned));
-            overlay_state
-                .bubble
-                .show(&format!("Voice error: {}", message), now);
+            // No bubble in voice-only mode, but could optionally show error briefly
         }
 
         WakeyEvent::Shutdown => {
