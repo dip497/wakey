@@ -152,6 +152,40 @@ pub enum WakeyEvent {
         approved: bool,
     },
 
+    // ── AGENT SUPERVISION ──
+    AgentSpawned {
+        agent_type: String,
+        task: String,
+        worktree: Option<String>,
+    },
+    AgentProgress {
+        agent_type: String,
+        phase: String,
+        detail: String,
+    },
+    AgentStuck {
+        agent_type: String,
+        reason: String,
+        duration_secs: u64,
+    },
+    AgentError {
+        agent_type: String,
+        error: String,
+        auto_fixable: bool,
+    },
+    AgentFixed {
+        agent_type: String,
+        fix: String,
+    },
+    AgentCompleted {
+        agent_type: String,
+        summary: String,
+    },
+    AgentFailed {
+        agent_type: String,
+        reason: String,
+    },
+
     // ── SYSTEM ──
     Shutdown,
     Error {

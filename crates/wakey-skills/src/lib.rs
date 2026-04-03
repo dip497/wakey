@@ -8,6 +8,7 @@
 //! - OpenViking skill storage (L0/L1/L2 tiered abstraction)
 //! - petgraph DAG for dependency resolution
 
+pub mod agent_supervisor;
 pub mod dag;
 pub mod evolution;
 pub mod format;
@@ -17,6 +18,7 @@ pub mod registry;
 pub mod wasm;
 
 // Re-export main types
+pub use agent_supervisor::{AgentSupervisor, AgentType, SupervisorConfig};
 pub use dag::{DagStats, SkillDag, SkillNode};
 pub use evolution::{EvolutionType, SkillEvolver, SkillLineage, SkillOrigin};
 pub use format::{SkillContent, SkillManifest, generate_abstract, generate_overview, parse_skill};

@@ -397,9 +397,10 @@ mod tests {
     async fn test_assemble_context() {
         let ctx = make_test_context();
 
-        let assembled = assemble_context(&ctx, "User is coding in VS Code", Some("ask about editor"))
-            .await
-            .expect("Assemble");
+        let assembled =
+            assemble_context(&ctx, "User is coding in VS Code", Some("ask about editor"))
+                .await
+                .expect("Assemble");
 
         assert!(assembled.system_prompt.contains("Buddy"));
         assert!(!assembled.history.is_empty() || assembled.history.is_empty()); // Can be empty initially
