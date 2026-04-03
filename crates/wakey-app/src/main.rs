@@ -7,12 +7,15 @@
 //! - Overlay with sprite and chat bubble (S4)
 //! - Decision loop that calls LLM periodically (S5)
 //! - Voice mode with push-to-talk (S6)
+//! - Memory + Skills integration (P2-S3)
 
 use anyhow::Result;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
+use wakey_context::{Memory, SqliteMemory};
+use wakey_cortex::AgentLoop;
 use wakey_cortex::heartbeat::HeartbeatRunner;
 use wakey_cortex::llm::{LlmProvider, OpenAiCompatible};
 use wakey_cortex::voice::VoiceSession;
@@ -33,7 +36,7 @@ fn main() -> Result<()> {
     info!("Wakey is waking up...");
 
     // Load configuration from file
-    let config = WakeyConfig::load(Path::new("config/default.toml"))?;
+    let config = WakeyConfig::load(PathBuf::from("config/default.toml").as_path())?;
     info!(
         persona = config.persona.name,
         provider = config.llm.default_provider,
@@ -44,6 +47,9 @@ fn main() -> Result<()> {
     let spine = Spine::new();
     info!(subscribers = spine.subscriber_count(), "Spine initialized");
 
+    // Initialize memory and skills (P2-S3)
+    let memory = init_memory(&config)?;
+
     // Create LLM provider from config
     let provider = create_llm_provider(&config)?;
 
@@ -51,6 +57,14 @@ fn main() -> Result<()> {
     let spine_clone = spine.clone();
     let config_clone = config.clone();
     let provider_clone = provider.clone();
+    let memory_clone = memory.clone();
+    let skills_dir = config
+        .general
+        .data_dir
+        .join("context")
+        .join("agent")
+        .join("skills");
+    let index_db = config.general.data_dir.join("context").join("skills.db");
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -63,6 +77,31 @@ fn main() -> Result<()> {
                 HeartbeatRunner::new(spine_clone.clone(), &config_clone.heartbeat);
             let heartbeat_shutdown_rx = spine_clone.subscribe();
             tokio::spawn(heartbeat_runner.run(heartbeat_shutdown_rx));
+
+            // Create skill registry inside the async block (not Send safe)
+            // SkillRegistry contains rusqlite::Connection which is not Send/Sync,
+            // but we're using single-threaded tokio runtime so this is safe.
+            #[allow(clippy::arc_with_non_send_sync)]
+            let skill_registry = match wakey_skills::registry::new(&skills_dir, &index_db) {
+                Ok(mut registry) => {
+                    let count = registry.scan().ok().unwrap_or(0);
+                    info!(count = count, "Skills indexed");
+                    Some(Arc::new(registry))
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to initialize skills");
+                    None
+                }
+            };
+
+            // Create agent loop with memory and skills
+            let _agent_loop = AgentLoop::new(
+                provider_clone.clone(),
+                memory_clone,
+                skill_registry,
+                spine_clone.clone(),
+                config_clone.persona.clone(),
+            );
 
             // Start decision loop (calls LLM periodically)
             let decision_shutdown_rx = spine_clone.subscribe();
@@ -140,13 +179,29 @@ fn main() -> Result<()> {
         info!("Voice mode disabled in config");
     }
 
-    info!("Starting overlay window...");
+    info!("Starting overlay windows...");
 
     // Run overlay on main thread (blocks until window closes)
     run_overlay_with_spine(spine);
 
     info!("Wakey is going to sleep. Goodnight.");
     Ok(())
+}
+
+/// Initialize memory backend
+fn init_memory(config: &WakeyConfig) -> Result<Arc<dyn Memory>> {
+    let data_dir = config.general.data_dir.join("context");
+    std::fs::create_dir_all(&data_dir).ok();
+
+    let db_path = data_dir.join("index.db");
+    let memory = SqliteMemory::new(db_path).map_err(|e| anyhow::anyhow!("Memory init: {}", e))?;
+
+    info!(
+        path = %config.general.data_dir.display(),
+        "Memory initialized"
+    );
+
+    Ok(Arc::new(memory))
 }
 
 /// Create LLM provider from configuration.
@@ -214,17 +269,32 @@ async fn decision_loop(
         tokio::select! {
             // Handle events from spine
             Ok(event) = event_rx.recv() => {
-                if let WakeyEvent::WindowFocusChanged { app, title, .. } = event {
-                    let window = format!("{} - {}", app, title);
-                    if window != last_window {
-                        debug!(window = %window, "Window focus changed");
-                        last_window = window.clone();
-                        focus_count += 1;
+                match &event {
+                    WakeyEvent::WindowFocusChanged { app, title, .. } => {
+                        let window = format!("{} - {}", app, title);
+                        if window != last_window {
+                            debug!(window = %window, "Window focus changed");
+                            last_window = window.clone();
+                            focus_count += 1;
 
-                        // Every 15th focus change (~30s), ask LLM to say something
-                        if focus_count.is_multiple_of(5) {
-                            ask_llm_to_speak(&spine, &provider, &persona_name, &last_window);
+                            // Every 5th focus change, ask LLM to say something
+                            if focus_count.is_multiple_of(5) {
+                                ask_llm_to_speak(&spine, &provider, &persona_name, &last_window).await;
+                            }
                         }
+                    }
+
+                    WakeyEvent::Reflect => {
+                        info!("Reflect event received, processing...");
+                        // Memory reflection handled by agent_loop
+                    }
+
+                    WakeyEvent::Tick | WakeyEvent::Breath | WakeyEvent::Dream => {
+                        // These are handled by heartbeat runner
+                    }
+
+                    _ => {
+                        // Other events are logged by EventLogger
                     }
                 }
             }
@@ -240,9 +310,8 @@ async fn decision_loop(
 
 /// Ask the LLM to generate something to say about the current context.
 ///
-/// This is the MVP "proactive speech" logic. In future versions,
-/// this will be much smarter (memory, user model, conversation history).
-fn ask_llm_to_speak(
+/// This is the MVP "proactive speech" logic. Now enhanced with memory and skills.
+async fn ask_llm_to_speak(
     spine: &Spine,
     provider: &Arc<dyn LlmProvider>,
     persona_name: &str,
@@ -359,6 +428,16 @@ impl EventLogger {
                         }
                         WakeyEvent::VoiceError { message } => {
                             warn!(message = %message, "Voice: Error");
+                        }
+                        // Memory and skill events
+                        WakeyEvent::ShouldRemember {
+                            content,
+                            importance,
+                        } => {
+                            info!(content = %content, importance = ?importance, "Should remember");
+                        }
+                        WakeyEvent::SkillExtracted { name, description } => {
+                            info!(name = %name, description = %description, "Skill extracted");
                         }
                         other => {
                             debug!(event = ?other, "Event received");

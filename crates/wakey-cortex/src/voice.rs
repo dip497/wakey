@@ -279,7 +279,10 @@ impl VoiceSession {
             while running_rx.load(Ordering::SeqCst) {
                 match ws_rx.next().await {
                     Some(Ok(WsMessage::Text(text))) => {
-                        debug!("STT raw response: {}", &text.chars().take(200).collect::<String>());
+                        debug!(
+                            "STT raw response: {}",
+                            &text.chars().take(200).collect::<String>()
+                        );
                         if let Ok(response) = serde_json::from_str::<SttResponse>(&text) {
                             // Extract transcript from response structure
                             if let Some(channel) = &response.channel

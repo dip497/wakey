@@ -3,13 +3,13 @@
 //! Implements the OpenViking filesystem paradigm with `wakey://` URIs.
 //! The filesystem is the source of truth; SQLite index is rebuilt from it.
 
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::RwLock;
 use tracing::{debug, instrument};
-use std::future::Future;
-use std::pin::Pin;
 
 use wakey_types::WakeyResult;
 
@@ -317,7 +317,8 @@ impl ContextFs {
         let fs_path = self.to_fs_path(path).await;
         let mut all_files = Vec::new();
 
-        self.list_files_recursive(fs_path, path.clone(), &mut all_files).await?;
+        self.list_files_recursive(fs_path, path.clone(), &mut all_files)
+            .await?;
 
         debug!("Found {} files under {}", all_files.len(), path.uri());
         Ok(all_files)
@@ -345,7 +346,12 @@ impl ContextFs {
                 let child_context_path = if context_path.path().is_empty() {
                     ContextPath::new(&format!("{}/{}", context_path.scope(), name))
                 } else {
-                    ContextPath::new(&format!("{}/{}/{}", context_path.scope(), context_path.path(), name))
+                    ContextPath::new(&format!(
+                        "{}/{}/{}",
+                        context_path.scope(),
+                        context_path.path(),
+                        name
+                    ))
                 };
 
                 if metadata.is_dir() {

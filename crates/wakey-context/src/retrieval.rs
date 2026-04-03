@@ -83,7 +83,11 @@ impl Retriever {
 
     /// Search for context matching a query.
     #[instrument(skip(self))]
-    pub async fn search(&self, query: &str, options: &SearchOptions) -> WakeyResult<Vec<SearchResult>> {
+    pub async fn search(
+        &self,
+        query: &str,
+        options: &SearchOptions,
+    ) -> WakeyResult<Vec<SearchResult>> {
         debug!("Searching for '{}' with limit {}", query, options.limit);
 
         let entries = self.memory.recall(query, options.limit).await?;
@@ -160,7 +164,11 @@ impl Retriever {
 
     /// Retrieve context entries by path prefix.
     #[instrument(skip(self))]
-    pub async fn retrieve_by_prefix(&self, prefix: &str, limit: usize) -> WakeyResult<Vec<SearchResult>> {
+    pub async fn retrieve_by_prefix(
+        &self,
+        prefix: &str,
+        limit: usize,
+    ) -> WakeyResult<Vec<SearchResult>> {
         let all_entries = self.memory.list(None).await?;
 
         let results: Vec<SearchResult> = all_entries

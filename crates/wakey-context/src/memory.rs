@@ -3,11 +3,11 @@
 //! Based on ZeroClaw Memory trait (store/recall/forget with hybrid search)
 //! and OpenSpace quality metrics (selections/applied/completions/fallbacks).
 
-use std::path::PathBuf;
-use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::{debug, instrument};
 
@@ -89,15 +89,27 @@ pub struct SkillMetrics {
 
 impl SkillMetrics {
     pub fn applied_rate(&self) -> f64 {
-        if self.total_selections == 0 { 0.0 } else { self.total_applied as f64 / self.total_selections as f64 }
+        if self.total_selections == 0 {
+            0.0
+        } else {
+            self.total_applied as f64 / self.total_selections as f64
+        }
     }
 
     pub fn completion_rate(&self) -> f64 {
-        if self.total_applied == 0 { 0.0 } else { self.total_completions as f64 / self.total_applied as f64 }
+        if self.total_applied == 0 {
+            0.0
+        } else {
+            self.total_completions as f64 / self.total_applied as f64
+        }
     }
 
     pub fn effective_rate(&self) -> f64 {
-        if self.total_selections == 0 { 0.0 } else { self.total_completions as f64 / self.total_selections as f64 }
+        if self.total_selections == 0 {
+            0.0
+        } else {
+            self.total_completions as f64 / self.total_selections as f64
+        }
     }
 }
 
@@ -118,7 +130,13 @@ pub trait Memory: Send + Sync {
     async fn get(&self, key: &str) -> WakeyResult<Option<MemoryEntry>>;
     async fn forget(&self, key: &str) -> WakeyResult<bool>;
     async fn list(&self, category: Option<&MemoryCategory>) -> WakeyResult<Vec<MemoryEntry>>;
-    async fn record_skill_metrics(&self, skill_id: &str, applied: bool, completed: bool, fallback: bool) -> WakeyResult<()>;
+    async fn record_skill_metrics(
+        &self,
+        skill_id: &str,
+        applied: bool,
+        completed: bool,
+        fallback: bool,
+    ) -> WakeyResult<()>;
     async fn get_skill_metrics(&self, skill_id: &str) -> WakeyResult<Option<SkillMetrics>>;
 }
 
@@ -193,28 +211,50 @@ impl SqliteMemory {
         Ok(())
     }
 
-    fn now() -> String { Utc::now().to_rfc3339() }
+    fn now() -> String {
+        Utc::now().to_rfc3339()
+    }
 
     fn generate_l0(content: &str) -> String {
         let first_line = content.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
         let trimmed = first_line.trim();
-        if trimmed.len() > 100 { trimmed[..100].to_string() } else { trimmed.to_string() }
+        if trimmed.len() > 100 {
+            trimmed[..100].to_string()
+        } else {
+            trimmed.to_string()
+        }
     }
 
     fn generate_l1(content: &str) -> String {
-        let meaningful: String = content.lines().filter(|l| !l.trim().is_empty()).take(5).collect::<Vec<_>>().join("\n");
-        if meaningful.len() > 500 { meaningful[..500].to_string() } else { meaningful }
+        let meaningful: String = content
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .take(5)
+            .collect::<Vec<_>>()
+            .join("\n");
+        if meaningful.len() > 500 {
+            meaningful[..500].to_string()
+        } else {
+            meaningful
+        }
     }
 
     fn extract_title(key: &str) -> String {
-        key.rsplit('/').next().unwrap_or(key).replace(".md", "").to_string()
+        key.rsplit('/')
+            .next()
+            .unwrap_or(key)
+            .replace(".md", "")
+            .to_string()
     }
 
     fn run<F, T>(&self, f: F) -> WakeyResult<T>
     where
         F: FnOnce(&Connection) -> WakeyResult<T>,
     {
-        let conn = self.conn.lock().map_err(|e| wakey_types::WakeyError::Memory(e.to_string()))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| wakey_types::WakeyError::Memory(e.to_string()))?;
         f(&conn)
     }
 }
@@ -340,7 +380,13 @@ impl Memory for SqliteMemory {
     }
 
     #[instrument(skip(self))]
-    async fn record_skill_metrics(&self, skill_id: &str, applied: bool, completed: bool, fallback: bool) -> WakeyResult<()> {
+    async fn record_skill_metrics(
+        &self,
+        skill_id: &str,
+        applied: bool,
+        completed: bool,
+        fallback: bool,
+    ) -> WakeyResult<()> {
         let skill_id = skill_id.to_string();
         let now = Self::now();
         self.run(move |conn| {
@@ -373,7 +419,14 @@ mod tests {
     #[tokio::test]
     async fn test_memory_store_and_recall() {
         let memory = SqliteMemory::new_in_memory().unwrap();
-        memory.store("user/memories/test.md", "This is a test memory about preferences.", &MemoryCategory::Core).await.unwrap();
+        memory
+            .store(
+                "user/memories/test.md",
+                "This is a test memory about preferences.",
+                &MemoryCategory::Core,
+            )
+            .await
+            .unwrap();
         let results = memory.recall("test", 10).await.unwrap();
         assert_eq!(results.len(), 1);
     }
@@ -381,7 +434,10 @@ mod tests {
     #[tokio::test]
     async fn test_memory_get_and_forget() {
         let memory = SqliteMemory::new_in_memory().unwrap();
-        memory.store("test.md", "content", &MemoryCategory::Daily).await.unwrap();
+        memory
+            .store("test.md", "content", &MemoryCategory::Daily)
+            .await
+            .unwrap();
         assert!(memory.get("test.md").await.unwrap().is_some());
         assert!(memory.forget("test.md").await.unwrap());
         assert!(memory.get("test.md").await.unwrap().is_none());
@@ -390,9 +446,19 @@ mod tests {
     #[tokio::test]
     async fn test_skill_metrics() {
         let memory = SqliteMemory::new_in_memory().unwrap();
-        memory.record_skill_metrics("test-skill", true, true, false).await.unwrap();
-        memory.record_skill_metrics("test-skill", true, false, true).await.unwrap();
-        let m = memory.get_skill_metrics("test-skill").await.unwrap().unwrap();
+        memory
+            .record_skill_metrics("test-skill", true, true, false)
+            .await
+            .unwrap();
+        memory
+            .record_skill_metrics("test-skill", true, false, true)
+            .await
+            .unwrap();
+        let m = memory
+            .get_skill_metrics("test-skill")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(m.total_selections, 2);
         assert_eq!(m.total_completions, 1);
     }

@@ -5,11 +5,11 @@
 //! - L1: Paragraph overview (~500 chars) — stored in index.db
 //! - L2: Full content — read from filesystem on demand
 
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, instrument};
-use lru::LruCache;
-use std::num::NonZeroUsize;
 
 use crate::filesystem::{ContextFs, ContextPath};
 use crate::memory::{Memory, SqliteMemory};
@@ -176,11 +176,7 @@ impl Tiers {
         }
 
         if let Some(entry) = self.memory.get(&path.uri()).await? {
-            let tiered = TieredContent::new(
-                path.clone(),
-                entry.l0_abstract,
-                entry.l1_overview,
-            );
+            let tiered = TieredContent::new(path.clone(), entry.l0_abstract, entry.l1_overview);
 
             let mut cache = self.cache.write().await;
             cache.put(path.uri(), tiered.clone());
@@ -204,7 +200,10 @@ impl Tiers {
 
     /// Get multiple tiered entries at once.
     #[instrument(skip(self))]
-    pub async fn get_tiered_batch(&self, paths: Vec<ContextPath>) -> WakeyResult<Vec<TieredContent>> {
+    pub async fn get_tiered_batch(
+        &self,
+        paths: Vec<ContextPath>,
+    ) -> WakeyResult<Vec<TieredContent>> {
         let mut results = Vec::with_capacity(paths.len());
 
         for path in paths {
@@ -223,10 +222,7 @@ impl Tiers {
 
     /// Generate L0 abstract from content.
     fn generate_l0(content: &str) -> String {
-        let first_line = content
-            .lines()
-            .find(|l| !l.trim().is_empty())
-            .unwrap_or("");
+        let first_line = content.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
         let trimmed = first_line.trim();
         if trimmed.len() > 100 {
             trimmed[..100].to_string()
@@ -254,8 +250,8 @@ impl Tiers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::memory::MemoryCategory;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_tiered_content() {
@@ -264,10 +260,10 @@ mod tests {
         let memory = Arc::new(SqliteMemory::new_in_memory().unwrap());
 
         let path = ContextPath::new("user/memories/test.md");
-        
+
         memory
             .store(
-                &path.uri(),  // Use URI format for consistency
+                &path.uri(), // Use URI format for consistency
                 "# Test Memory\n\nThis is the full content of the test memory.",
                 &MemoryCategory::Core,
             )
@@ -330,7 +326,8 @@ mod tests {
         let tiered = TieredContent::new(
             ContextPath::new("test.md"),
             "Short abstract".to_string(),
-            "This is a longer overview that contains more information about the content.".to_string(),
+            "This is a longer overview that contains more information about the content."
+                .to_string(),
         );
 
         let l0_tokens = tiered.estimate_tokens(ContextLevel::Abstract);

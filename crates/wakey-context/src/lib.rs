@@ -34,8 +34,6 @@ pub mod tiers;
 
 // Re-export main types for convenience
 pub use filesystem::{ContextEntry, ContextFs, ContextPath, URI_SCHEME};
-pub use memory::{
-    Memory, MemoryCategory, MemoryEntry, SkillLineage, SkillMetrics, SqliteMemory,
-};
+pub use memory::{Memory, MemoryCategory, MemoryEntry, SkillLineage, SkillMetrics, SqliteMemory};
 pub use retrieval::{Retriever, SearchOptions, SearchResult};
 pub use tiers::{ContextLevel, TieredContent, Tiers};

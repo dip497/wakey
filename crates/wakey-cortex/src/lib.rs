@@ -14,6 +14,8 @@ pub mod llm;
 pub mod voice;
 
 // Re-export main types for convenience
+pub use agent_loop::{AgentLoop, init_memory_db, init_skills_dir};
+pub use decision::{DecisionContext, assemble_context, handle_reflect, store_conversation_fact};
 pub use llm::{LlmProvider, OpenAiCompatible};
 
 #[cfg(feature = "voice")]

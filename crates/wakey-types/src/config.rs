@@ -45,6 +45,16 @@ pub struct MemoryConfig {
     pub max_working_memory_tokens: usize,
 }
 
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            backend: "viking".to_string(),
+            viking_root: PathBuf::from("~/.wakey/viking"),
+            max_working_memory_tokens: 4096,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionConfig {
     pub enabled: bool,
