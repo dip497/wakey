@@ -34,19 +34,17 @@ style = "casual"              # casual, formal, playful, minimal
 proactive = true              # Should Wakey initiate conversations?
 
 [voice]
-enabled = false               # Enable voice plugin (set to true when you configure a plugin)
-plugin = "voice-none"         # Plugin name: voice-livekit, voice-deepgram, voice-local, voice-none
-plugin_path = "plugins/voice-none/main.py"  # Path to plugin script/binary
-plugin_command = "python3"    # Command to run plugin: python3, node, ./bin/plugin
+enabled = true
+plugin = "voice-livekit"
+plugin_path = "plugins/voice-livekit/setup.sh"
+plugin_command = "bash"
 
-# Environment variables passed to plugin process
-# Use ${VAR} to reference environment variables
 [voice.env]
-# LIVEKIT_URL = "${LIVEKIT_URL}"
-# LIVEKIT_API_KEY = "${LIVEKIT_API_KEY}"
-# LIVEKIT_API_SECRET = "${LIVEKIT_API_SECRET}"
-# DEEPGRAM_API_KEY = "${DEEPGRAM_API_KEY}"
-# GROQ_API_KEY = "${GROQ_API_KEY}"
+LIVEKIT_URL = "${LIVEKIT_URL}"
+LIVEKIT_API_KEY = "${LIVEKIT_API_KEY}"
+LIVEKIT_API_SECRET = "${LIVEKIT_API_SECRET}"
+DEEPGRAM_API_KEY = "${DEEPGRAM_API_KEY}"
+GROQ_API_KEY = "${GROQ_API_KEY}"
 
 [llm]
 default_provider = "groq"
