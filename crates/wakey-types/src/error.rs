@@ -34,6 +34,15 @@ pub enum WakeyError {
 
     #[error("TOML parse error: {0}")]
     Toml(#[from] toml::de::Error),
+
+    #[error("Database error: {0}")]
+    Database(String),
+}
+
+impl From<rusqlite::Error> for WakeyError {
+    fn from(err: rusqlite::Error) -> Self {
+        WakeyError::Database(err.to_string())
+    }
 }
 
 pub type WakeyResult<T> = Result<T, WakeyError>;
