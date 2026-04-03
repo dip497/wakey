@@ -394,9 +394,12 @@ async fn decision_loop(
     let mut tick_count = 0u32;
     let mut last_window = String::new();
     let mut startup_done = false;
+    let mut speaking_since_tick: Option<u32> = None;
 
     // Tick-based speech interval (15 ticks ≈ 30s at 2s tick interval)
     const TICKS_BETWEEN_SPEECH: u32 = 15;
+    // Safety: reset is_speaking if stuck for >15 ticks (30s)
+    const SPEAKING_TIMEOUT_TICKS: u32 = 15;
 
     info!("Decision loop started with speech overlap protection");
 
@@ -436,14 +439,32 @@ async fn decision_loop(
 
                         // Every N ticks, ask LLM to say something (if we have window context)
                         // BUT: skip if Wakey is speaking or user is talking (P3 overlap fix)
+                        // Safety: reset stuck is_speaking flag
+                        if is_speaking.load(Ordering::SeqCst) {
+                            if let Some(since) = speaking_since_tick {
+                                if tick_count.saturating_sub(since) > SPEAKING_TIMEOUT_TICKS {
+                                    warn!("is_speaking stuck for >30s, resetting");
+                                    is_speaking.store(false, Ordering::SeqCst);
+                                    speaking_since_tick = None;
+                                }
+                            } else {
+                                speaking_since_tick = Some(tick_count);
+                            }
+                        } else {
+                            speaking_since_tick = None;
+                        }
+
                         if tick_count.is_multiple_of(TICKS_BETWEEN_SPEECH) && !last_window.is_empty() {
                             if is_speaking.load(Ordering::SeqCst) {
                                 debug!(tick = tick_count, "Skipping speech trigger - Wakey is speaking");
                             } else if user_talking.load(Ordering::SeqCst) {
                                 debug!(tick = tick_count, "Skipping speech trigger - user is talking");
                             } else {
+                                // Set speaking flag BEFORE LLM call to prevent overlap
+                                is_speaking.store(true, Ordering::SeqCst);
                                 info!(tick = tick_count, window = %last_window, "Periodic speech trigger");
                                 ask_llm_to_speak(&spine, &provider, &memory, &persona_name, &last_window).await;
+                                // TTS listener will reset is_speaking after playback
                             }
                         }
                     }
