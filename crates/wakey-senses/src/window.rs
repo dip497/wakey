@@ -6,15 +6,33 @@
 use std::process::Command;
 use tracing::{debug, warn};
 
+/// Check if a window should be ignored (Wakey's own window)
+fn is_wakey_window(app: &str, title: &str) -> bool {
+    let app_lower = app.to_lowercase();
+    let title_lower = title.to_lowercase();
+
+    // Filter out Wakey's own window
+    app_lower.contains("wakey") || title_lower.starts_with("wakey")
+}
+
 /// Get the active window's app name and title.
 ///
 /// Returns `(app_name, window_title)` or `None` if detection fails.
+/// Returns `None` if the active window is Wakey itself (filtered out).
 ///
 /// Linux implementation uses xdotool:
 /// - `xdotool getactivewindow getwindowname` for title
 /// - `xdotool getactivewindow` + `xprop WM_CLASS` for app name
 pub fn get_active_window() -> Option<(String, String)> {
-    get_active_window_linux()
+    let (app, title) = get_active_window_linux()?;
+
+    // Filter out Wakey's own window
+    if is_wakey_window(&app, &title) {
+        debug!(app = %app, title = %title, "Filtering out Wakey's own window");
+        return None;
+    }
+
+    Some((app, title))
 }
 
 fn get_active_window_linux() -> Option<(String, String)> {
@@ -110,5 +128,18 @@ mod tests {
 
         let output = "";
         assert_eq!(parse_wm_class(output), "");
+    }
+
+    #[test]
+    fn test_is_wakey_window() {
+        // Wakey's own window should be filtered
+        assert!(is_wakey_window("wakey", "Wakey"));
+        assert!(is_wakey_window("Wakey", "Wakey"));
+        assert!(is_wakey_window("wakey-overlay", "Wakey"));
+
+        // Other windows should not be filtered
+        assert!(!is_wakey_window("firefox", "Mozilla Firefox"));
+        assert!(!is_wakey_window("code", "Visual Studio Code"));
+        assert!(!is_wakey_window("terminal", "bash"));
     }
 }

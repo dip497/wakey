@@ -236,14 +236,20 @@ fn handle_spine_event(
     match event {
         WakeyEvent::ShouldSpeak {
             suggested_text: Some(text),
-            ..
+            reason,
+            urgency,
         } => {
-            tracing::debug!(text = %text, "Showing speech bubble");
+            tracing::info!(
+                text = %text,
+                reason = %reason,
+                urgency = ?urgency,
+                "ShouldSpeak event received - showing speech bubble"
+            );
             overlay_state.bubble.show(&text, now);
         }
 
-        WakeyEvent::ShouldSpeak { .. } => {
-            // No text to show
+        WakeyEvent::ShouldSpeak { reason, .. } => {
+            tracing::warn!(reason = %reason, "ShouldSpeak event received but no text provided");
         }
 
         WakeyEvent::MoodChanged { to, .. } => {
