@@ -16,3 +16,5 @@ eframe = { version = "0.31", default-features = false, features = [
     "wayland",      # Wayland support (optional but good to have)
 ] }
 chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

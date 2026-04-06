@@ -13,6 +13,24 @@ use tracing::{debug, instrument};
 
 use wakey_types::WakeyResult;
 
+/// Escape special characters for FTS5 search.
+///
+/// FTS5 interprets certain characters as operators: - + | & ! ( ) " ~ *
+/// This escapes them to treat them as literal text.
+fn escape_fts5(text: &str) -> String {
+    let mut escaped = String::new();
+    for c in text.chars() {
+        match c {
+            '-' | '+' | '|' | '&' | '!' | '(' | ')' | '"' | '~' | '*' | '\\' => {
+                escaped.push('\\');
+                escaped.push(c);
+            }
+            _ => escaped.push(c),
+        }
+    }
+    escaped
+}
+
 /// Memory category for classification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MemoryCategory {
@@ -282,7 +300,7 @@ impl Memory for SqliteMemory {
             )?;
             conn.execute("DELETE FROM context_fts WHERE path = ?1", params![key])?;
             conn.execute("INSERT INTO context_fts (path, title, content, category, l0_abstract, l1_overview) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![key, title, content, category.as_str(), l0, l1])?;
+                params![key, escape_fts5(&title), escape_fts5(&content), category.as_str(), escape_fts5(&l0), escape_fts5(&l1)])?;
             debug!("Stored memory: {}", key);
             Ok(())
         })
@@ -298,7 +316,7 @@ impl Memory for SqliteMemory {
                   FROM context_fts fts JOIN context_meta meta ON fts.path = meta.path
                   WHERE context_fts MATCH ?1 ORDER BY bm25(context_fts) LIMIT ?2",
             )?;
-            let entries = stmt.query_map(params![query, limit as i32], |row| {
+            let entries = stmt.query_map(params![escape_fts5(&query), limit as i32], |row| {
                 Ok(MemoryEntry {
                     key: row.get(0)?, title: row.get(1)?, l0_abstract: row.get(2)?, l1_overview: row.get(3)?,
                     content: row.get(4)?, category: MemoryCategory::parse(&row.get::<_, String>(5)?),

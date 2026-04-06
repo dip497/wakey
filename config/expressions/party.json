@@ -1,0 +1,11 @@
+{
+  "name": "party_mode",
+  "eyes": "wide",
+  "mouth": "tongue",
+  "eyebrows": "none",
+  "accessories": ["sparkle", "heart"],
+  "duration_ms": 5000,
+  "loops": false,
+  "priority": "high",
+  "transition_ms": 100
+}

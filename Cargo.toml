@@ -9,6 +9,7 @@ members = [
     "crates/wakey-action",      # Hands: input, terminal, browser + Cedar safety
     "crates/wakey-skills",      # Skills: Hermes format + petgraph DAG + WASM sandbox + learning loop
     "crates/wakey-overlay",     # Face: egui, sprites, chat bubbles
+    "crates/wakey-tui",         # Terminal UI
     "crates/wakey-app",         # Binary: ties everything together
 ]
 
@@ -72,6 +73,7 @@ wakey-cortex = { path = "crates/wakey-cortex" }
 wakey-action = { path = "crates/wakey-action" }
 wakey-skills = { path = "crates/wakey-skills" }
 wakey-overlay = { path = "crates/wakey-overlay" }
+wakey-tui = { path = "crates/wakey-tui" }
 
 [profile.release]
 opt-level = "z"

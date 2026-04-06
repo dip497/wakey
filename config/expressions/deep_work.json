@@ -1,0 +1,11 @@
+{
+  "name": "deep_work",
+  "eyes": "dot",
+  "mouth": "flat",
+  "eyebrows": "none",
+  "accessories": [],
+  "duration_ms": 0,
+  "loops": false,
+  "priority": "low",
+  "transition_ms": 200
+}

@@ -3,7 +3,7 @@
 //! Always-on-top transparent window positioned in bottom-right corner.
 //! Uses eframe (egui framework) for rendering.
 
-use crate::{bubble::Bubble, expressions::Expression, sprite::Sprite};
+use crate::{bubble::Bubble, expressions::Expression, sprite::Sprite, trigger::ExpressionMapper};
 use eframe::egui::Pos2;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -46,6 +46,8 @@ pub struct OverlayState {
     pub last_update: Instant,
     /// Voice mode state
     pub voice_state: VoiceState,
+    /// Expression trigger mapper
+    pub mapper: ExpressionMapper,
 }
 
 /// Voice mode state for the overlay.
@@ -71,6 +73,7 @@ impl Default for OverlayState {
             shutdown_requested: false,
             last_update: Instant::now(),
             voice_state: VoiceState::default(),
+            mapper: ExpressionMapper::new(),
         }
     }
 }
@@ -140,7 +143,7 @@ impl eframe::App for OverlayApp {
         let state = self.state.lock().unwrap();
         state
             .sprite
-            .draw(&painter, sprite_center, self.config.sprite_size);
+            .draw(&painter, sprite_center);
         state
             .bubble
             .draw(&painter, sprite_center, self.config.sprite_size);
@@ -267,15 +270,11 @@ fn handle_spine_event(
         WakeyEvent::VoiceListeningStarted => {
             tracing::debug!("Voice listening started");
             overlay_state.voice_state = VoiceState::Listening;
-            // Set focused/attentive expression
-            overlay_state.sprite.set_expression(Expression {
-                glow_color: [0.30, 0.60, 0.90, 0.85], // Bright blue - attentive
-                anim_speed: 1.2,
-                eye_openness: 1.0,
-                sleepy: false,
-                bounce: false,
-            });
-            // No bubble in voice-only mode
+            if let Some(trigger) = crate::trigger::event_to_trigger(&event) {
+                if let Some(expr) = overlay_state.mapper.map(&trigger) {
+                    overlay_state.sprite.set_expression(expr);
+                }
+            }
         }
 
         WakeyEvent::VoiceListeningStopped => {
@@ -297,29 +296,21 @@ fn handle_spine_event(
         WakeyEvent::VoiceWakeyThinking => {
             tracing::debug!("Wakey thinking");
             overlay_state.voice_state = VoiceState::Thinking;
-            // Set thinking expression
-            overlay_state.sprite.set_expression(Expression {
-                glow_color: [0.70, 0.50, 0.90, 0.80], // Purple - thinking
-                anim_speed: 0.6,
-                eye_openness: 0.9,
-                sleepy: false,
-                bounce: false,
-            });
-            // No bubble in voice-only mode
+            if let Some(trigger) = crate::trigger::event_to_trigger(&event) {
+                if let Some(expr) = overlay_state.mapper.map(&trigger) {
+                    overlay_state.sprite.set_expression(expr);
+                }
+            }
         }
 
-        WakeyEvent::VoiceWakeySpeaking { text } => {
+        WakeyEvent::VoiceWakeySpeaking { ref text } => {
             tracing::debug!(text = %text, "Wakey speaking (voice-only mode)");
             overlay_state.voice_state = VoiceState::Speaking;
-            // Set happy/talking expression (sprite animation only, no bubble)
-            overlay_state.sprite.set_expression(Expression {
-                glow_color: [0.95, 0.75, 0.35, 0.90], // Bright amber - talking
-                anim_speed: 1.4,
-                eye_openness: 1.0,
-                sleepy: false,
-                bounce: true,
-            });
-            // No bubble - voice-only mode
+            if let Some(trigger) = crate::trigger::event_to_trigger(&event) {
+                if let Some(expr) = overlay_state.mapper.map(&trigger) {
+                    overlay_state.sprite.set_expression(expr);
+                }
+            }
         }
 
         WakeyEvent::VoiceSessionEnded => {

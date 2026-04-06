@@ -25,6 +25,8 @@ use wakey_spine::Spine;
 use wakey_types::config::PersonaConfig;
 use wakey_types::{ChatMessage, WakeyEvent, WakeyResult};
 
+use crate::prompt_loader::PromptFiles;
+
 /// Maximum messages in conversation history
 const MAX_HISTORY_MESSAGES: usize = 10;
 
@@ -41,6 +43,9 @@ pub struct DecisionContext {
 
     /// Persona configuration
     persona: PersonaConfig,
+
+    /// Loaded prompt files (SOUL.md, USER.md, MEMORY.md)
+    pub prompt_files: PromptFiles,
 
     /// Last reflect time (for periodic summarization)
     last_reflect: Instant,
@@ -62,6 +67,30 @@ impl DecisionContext {
             skill_registry,
             history: VecDeque::with_capacity(MAX_HISTORY_MESSAGES),
             persona,
+            prompt_files: PromptFiles {
+                soul: String::new(),
+                user: String::new(),
+                memory: String::new(),
+            },
+            last_reflect: Instant::now(),
+            session_start: Utc::now(),
+        }
+    }
+
+    /// Create a new decision context with loaded prompt files
+    pub fn new_with_prompts(
+        memory: Arc<dyn Memory>,
+        skill_registry: Option<Arc<SkillRegistry>>,
+        persona: PersonaConfig,
+        _memory_config: wakey_types::config::MemoryConfig,
+        prompt_files: PromptFiles,
+    ) -> Self {
+        Self {
+            memory,
+            skill_registry,
+            history: VecDeque::with_capacity(MAX_HISTORY_MESSAGES),
+            persona,
+            prompt_files,
             last_reflect: Instant::now(),
             session_start: Utc::now(),
         }
@@ -69,13 +98,28 @@ impl DecisionContext {
 
     /// Build system prompt with persona, memories, and skill instructions
     pub async fn build_system_prompt(&self, context_query: &str) -> WakeyResult<String> {
-        let mut prompt = format!(
-            "You are {}, a friendly AI companion that lives on the user's desktop.\n\
-             Your style is {} and you aim to be helpful, supportive, and natural.\n\n",
-            self.persona.name, self.persona.style
-        );
+        // Use SOUL.md if available, otherwise fall back to hardcoded persona text.
+        let mut prompt = if !self.prompt_files.soul.is_empty() {
+            format!("{}\n\n", self.prompt_files.soul)
+        } else {
+            format!(
+                "You are {}, a friendly AI companion that lives on the user's desktop.\n\
+                 Your style is {} and you aim to be helpful, supportive, and natural.\n\n",
+                self.persona.name, self.persona.style
+            )
+        };
 
-        // Recall relevant memories
+        // Inject USER.md if available
+        if !self.prompt_files.user.is_empty() {
+            prompt.push_str(&format!("{}\n\n", self.prompt_files.user));
+        }
+
+        // Inject curated MEMORY.md if available
+        if !self.prompt_files.memory.is_empty() {
+            prompt.push_str(&format!("## Curated Memory\n{}\n\n", self.prompt_files.memory));
+        }
+
+        // Recall relevant memories from SQLite
         let memories = self.memory.recall(context_query, 5).await?;
         if !memories.is_empty() {
             prompt.push_str("## Relevant Memories\n");

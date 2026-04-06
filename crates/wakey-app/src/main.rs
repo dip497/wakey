@@ -11,6 +11,7 @@
 //! - Agent supervision for GSD (P3)
 
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,6 +19,7 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 use wakey_context::{Memory, SqliteMemory};
 use wakey_cortex::AgentLoop;
+use wakey_cortex::PromptFiles;
 use wakey_cortex::heartbeat::HeartbeatRunner;
 use wakey_cortex::llm::{LlmProvider, OpenAiCompatible};
 use wakey_cortex::plugin_host::{PluginConfig, PluginHost};
@@ -26,7 +28,32 @@ use wakey_spine::Spine;
 use wakey_types::config::WakeyConfig;
 use wakey_types::{ChatMessage, WakeyEvent};
 
-fn main() -> Result<()> {
+
+/// Wakey - Your laptop, alive
+#[derive(Parser)]
+#[command(name = "wakey")]
+#[command(about = "An open-source AI companion that lives on your desktop")]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the sprite overlay (default)
+    Overlay,
+    /// Run interactive chat TUI
+    Chat,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Parse CLI
+    let cli = Cli::parse();
+    if matches!(cli.command, Some(Commands::Chat)) {
+        return wakey_tui::run_chat().await;
+    }
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -44,6 +71,23 @@ fn main() -> Result<()> {
         provider = config.llm.default_provider,
         "Configuration loaded"
     );
+
+    // Load prompt files (SOUL.md, USER.md, MEMORY.md) from the data directory.
+    // Missing files are created with sensible defaults.
+    let prompt_files = match PromptFiles::load(&config.general.data_dir) {
+        Ok(pf) => {
+            info!("Prompt files loaded from {}", config.general.data_dir.display());
+            pf
+        }
+        Err(e) => {
+            warn!(error = %e, "Failed to load prompt files, using empty defaults");
+            PromptFiles {
+                soul: String::new(),
+                user: String::new(),
+                memory: String::new(),
+            }
+        }
+    };
 
     // Create the central nervous system
     let spine = Spine::new();
@@ -70,6 +114,7 @@ fn main() -> Result<()> {
     let memory_clone = memory.clone();
     let is_speaking_clone = is_speaking.clone();
     let user_talking_clone = user_talking.clone();
+    let prompt_files_clone = prompt_files.clone();
     let skills_dir = config
         .general
         .data_dir
@@ -145,15 +190,16 @@ fn main() -> Result<()> {
                 registry.ok().map(Arc::new)
             };
 
-            // Create agent loop with memory and skills
+            // Create agent loop with memory, skills, and prompt files
             // Note: AgentLoop is not Send due to SkillRegistry, so we keep it local
             // and use it for context assembly within this async block if needed
-            let _agent_loop = AgentLoop::new(
+            let _agent_loop = AgentLoop::new_with_prompts(
                 provider_clone.clone(),
                 memory_clone.clone(),
                 skill_registry,
                 spine_clone.clone(),
                 config_clone.persona.clone(),
+                prompt_files_clone,
             );
 
             // Start decision loop (calls LLM periodically)

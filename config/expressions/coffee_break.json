@@ -1,0 +1,11 @@
+{
+  "name": "coffee_break",
+  "eyes": "curve_up",
+  "mouth": "smile",
+  "eyebrows": "none",
+  "accessories": ["coffee_cup"],
+  "duration_ms": 3000,
+  "loops": false,
+  "priority": "normal",
+  "transition_ms": 150
+}

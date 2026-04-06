@@ -32,6 +32,7 @@ use wakey_types::{ChatMessage, WakeyEvent, WakeyResult};
 
 use crate::decision::{DecisionContext, assemble_context};
 use crate::llm::LlmProvider;
+use crate::prompt_loader::PromptFiles;
 
 /// Maximum agent loop iterations (prevent infinite loops)
 const MAX_ITERATIONS: u32 = 20;
@@ -73,9 +74,31 @@ impl AgentLoop {
         spine: Spine,
         persona: PersonaConfig,
     ) -> Self {
+        Self::new_with_prompts(provider, memory, skill_registry, spine, persona, PromptFiles {
+            soul: String::new(),
+            user: String::new(),
+            memory: String::new(),
+        })
+    }
+
+    /// Create a new agent loop with loaded prompt files
+    #[allow(clippy::arc_with_non_send_sync)]
+    pub fn new_with_prompts(
+        provider: Arc<dyn LlmProvider>,
+        memory: Arc<dyn Memory>,
+        skill_registry: Option<Arc<SkillRegistry>>,
+        spine: Spine,
+        persona: PersonaConfig,
+        prompt_files: PromptFiles,
+    ) -> Self {
         let memory_config = wakey_types::config::MemoryConfig::default();
-        let decision_ctx =
-            DecisionContext::new(memory, skill_registry, persona.clone(), memory_config);
+        let decision_ctx = DecisionContext::new_with_prompts(
+            memory,
+            skill_registry,
+            persona.clone(),
+            memory_config,
+            prompt_files,
+        );
 
         Self {
             provider,

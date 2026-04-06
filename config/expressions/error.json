@@ -1,0 +1,11 @@
+{
+  "name": "error_oh_no",
+  "eyes": "wide",
+  "mouth": "wavy",
+  "eyebrows": "worried",
+  "accessories": ["sparkle"],
+  "duration_ms": 2000,
+  "loops": false,
+  "priority": "critical",
+  "transition_ms": 80
+}

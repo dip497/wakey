@@ -23,14 +23,18 @@
 //! run_overlay_with_spine(spine);
 //! ```
 
+pub mod animation_state;
 pub mod bubble;
 pub mod expressions;
 pub mod sprite;
+pub mod trigger;
 pub mod window;
 
+pub use animation_state::AnimationState;
 pub use bubble::Bubble;
-pub use expressions::Expression;
-pub use sprite::Sprite;
+pub use expressions::{Accessory, Expression, EyebrowShape, EyeShape, MouthShape, Priority};
+pub use sprite::{Sprite, SpriteConfig};
+pub use trigger::{ExpressionMapper, ExpressionTrigger, event_to_trigger};
 pub use window::{
     OverlayApp, OverlayConfig, OverlayState, VoiceState, run_overlay, run_spine_handler,
 };
